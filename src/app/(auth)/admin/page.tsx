@@ -1,0 +1,94 @@
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { getSyncStatus } from "@/lib/patreon";
+import { listInviteCodes } from "@/lib/invites";
+import { format } from "date-fns";
+import { InviteManager } from "@/components/InviteManager";
+import { SyncButton } from "./SyncButton";
+import { redirect } from "next/navigation";
+
+export const dynamic = "force-dynamic";
+
+export default async function AdminPage() {
+  const session = await auth();
+  if (session?.user?.role !== "ADMIN") redirect("/posts");
+
+  const [syncStatus, inviteCodes, postCount, userCount, videoCount] = await Promise.all([
+    getSyncStatus(),
+    listInviteCodes(),
+    prisma.post.count(),
+    prisma.user.count(),
+    prisma.media.count({ where: { type: "HLS_VIDEO" } }),
+  ]);
+
+  const stats = [
+    { label: "Total Posts", value: postCount },
+    { label: "Members", value: userCount },
+    { label: "Videos", value: videoCount },
+    {
+      label: "Last Sync",
+      value: syncStatus?.lastSyncAt
+        ? format(syncStatus.lastSyncAt, "MMM d, h:mm a")
+        : "Never",
+    },
+  ];
+
+  return (
+    <div>
+      <h1 className="text-2xl font-bold text-white mb-8">Admin Dashboard</h1>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+        {stats.map((stat) => (
+          <div
+            key={stat.label}
+            className="bg-zinc-900 border border-zinc-800 rounded-xl p-4"
+          >
+            <p className="text-sm text-zinc-500">{stat.label}</p>
+            <p className="text-2xl font-bold text-white mt-1">{stat.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Sync Status */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-zinc-100">Patreon Sync</h2>
+          <span
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium ${
+              syncStatus?.status === "success"
+                ? "bg-green-950/50 text-green-400 border border-green-900/30"
+                : syncStatus?.status === "running"
+                ? "bg-blue-950/50 text-blue-400 border border-blue-900/30"
+                : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+            }`}
+          >
+            {syncStatus?.status || "idle"}
+          </span>
+        </div>
+        <div className="space-y-2 text-sm text-zinc-400">
+          <p>
+            Last synced:{" "}
+            {syncStatus?.lastSyncAt
+              ? format(syncStatus.lastSyncAt, "MMMM d, yyyy 'at' h:mm a")
+              : "Never"}
+          </p>
+          {syncStatus?.cursor && (
+            <p className="font-mono text-xs text-zinc-600 truncate">
+              Cursor: {syncStatus.cursor}
+            </p>
+          )}
+          {syncStatus?.errorLog && (
+            <p className="text-red-400 bg-red-950/20 rounded-lg p-2 text-xs">
+              Error: {syncStatus.errorLog}
+            </p>
+          )}
+        </div>
+        <SyncButton />
+      </div>
+
+      {/* Invite Management */}
+      <InviteManager initialCodes={inviteCodes as any} />
+    </div>
+  );
+}
