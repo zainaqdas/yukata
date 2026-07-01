@@ -96,12 +96,14 @@ model Media {
 }
 
 model SyncState {
-  id         String    @id @default("main")
-  lastSyncAt DateTime?
-  cursor     String?
-  status     String    @default("idle")
-  errorLog   String?
-  updatedAt  DateTime  @updatedAt
+  id               String    @id @default("main")
+  lastSyncAt       DateTime?
+  cursor           String?
+  status           String    @default("idle")
+  errorLog         String?
+  patreonSessionId String?
+  sessionExpiresAt DateTime?
+  updatedAt        DateTime  @updatedAt
 }
 
 model Account {
