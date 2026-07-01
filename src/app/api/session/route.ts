@@ -4,17 +4,28 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const syncState = await getSyncStatus();
+  const { searchParams } = new URL(request.url);
+  const accountId = searchParams.get("accountId");
+
+  if (!accountId) {
+    return NextResponse.json({ error: "accountId is required" }, { status: 400 });
+  }
+
+  const syncState = await getSyncStatus(accountId);
+  if (!syncState) {
+    return NextResponse.json({ error: "Account not found" }, { status: 404 });
+  }
+
   return NextResponse.json({
-    hasSession: !!syncState?.patreonSessionId,
-    sessionExpiresAt: syncState?.sessionExpiresAt || null,
-    sessionStatus: syncState?.status || "idle",
+    hasSession: !!syncState.patreonSessionId,
+    sessionExpiresAt: syncState.sessionExpiresAt || null,
+    sessionStatus: syncState.status || "idle",
   });
 }
 
@@ -25,25 +36,32 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { sessionId } = body;
+  const { accountId, sessionId } = body;
 
-  if (!sessionId || typeof sessionId !== "string") {
+  if (!accountId || !sessionId || typeof sessionId !== "string") {
     return NextResponse.json(
-      { error: "sessionId is required" },
+      { error: "accountId and sessionId are required" },
       { status: 400 }
     );
   }
 
-  await savePatreonSessionId(sessionId.trim());
+  await savePatreonSessionId(accountId, sessionId.trim());
   return NextResponse.json({ success: true });
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await savePatreonSessionId("");
+  const { searchParams } = new URL(request.url);
+  const accountId = searchParams.get("accountId");
+
+  if (!accountId) {
+    return NextResponse.json({ error: "accountId is required" }, { status: 400 });
+  }
+
+  await savePatreonSessionId(accountId, "");
   return NextResponse.json({ success: true });
 }

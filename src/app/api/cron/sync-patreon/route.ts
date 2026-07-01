@@ -1,4 +1,4 @@
-import { syncPatreonPosts } from "@/lib/patreon";
+import { syncAllAccounts } from "@/lib/patreon";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -10,8 +10,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await syncPatreonPosts();
-    return NextResponse.json({ success: true, ...result });
+    const results = await syncAllAccounts();
+    return NextResponse.json({ success: true, results });
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error.message },

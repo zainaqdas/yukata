@@ -1,11 +1,13 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getSyncStatus } from "@/lib/patreon";
+import { listCreatorAccounts } from "@/lib/patreon";
 import { listInviteCodes } from "@/lib/invites";
 import { format } from "date-fns";
 import { InviteManager } from "@/components/InviteManager";
 import { SyncButton } from "./SyncButton";
 import { SessionManager } from "./SessionManager";
+import { AddAccountForm } from "./AddAccountForm";
+import { DeleteAccountButton } from "./DeleteAccountButton";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -14,35 +16,39 @@ export default async function AdminPage() {
   const session = await auth();
   if (session?.user?.role !== "ADMIN") redirect("/posts");
 
-  const [syncStatus, inviteCodes, postCount, userCount, videoCount] = await Promise.all([
-    getSyncStatus(),
+  const [accounts, inviteCodes, postCount, userCount, videoCount] = await Promise.all([
+    listCreatorAccounts(),
     listInviteCodes(),
     prisma.post.count(),
     prisma.user.count(),
     prisma.media.count({ where: { type: "HLS_VIDEO" } }),
   ]);
 
+  const lastSyncAt = accounts.reduce((latest: Date | null, a) => {
+    if (!a.lastSyncAt) return latest;
+    return !latest || a.lastSyncAt > latest ? a.lastSyncAt : latest;
+  }, null);
+
   const stats = [
     { label: "Total Posts", value: postCount },
     { label: "Members", value: userCount },
     { label: "Videos", value: videoCount },
+    { label: "Accounts", value: accounts.length },
     {
       label: "Last Sync",
-      value: syncStatus?.lastSyncAt
-        ? format(syncStatus.lastSyncAt, "MMM d, h:mm a")
-        : "Never",
+      value: lastSyncAt ? format(lastSyncAt, "MMM d, h:mm a") : "Never",
     },
   ];
 
-  const hasSessionId = !!syncStatus?.patreonSessionId;
-  const sessionExpired = syncStatus?.status === "session_expired";
-
   return (
     <div>
-      <h1 className="text-2xl font-bold text-white mb-8">Admin Dashboard</h1>
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-2xl font-bold text-white">Admin Dashboard</h1>
+        <SyncButton />
+      </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
         {stats.map((stat) => (
           <div
             key={stat.label}
@@ -54,59 +60,82 @@ export default async function AdminPage() {
         ))}
       </div>
 
-      {/* Patreon Session ID */}
+      {/* Creator Accounts */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 mb-8">
-        <h2 className="text-lg font-semibold text-zinc-100 mb-4">
-          Patreon Session Cookie
-        </h2>
-        <p className="text-sm text-zinc-400 mb-4">
-          Provide your Patreon <code className="px-1.5 py-0.5 rounded bg-zinc-800 text-violet-400 text-xs font-mono">session_id</code> cookie.
-          This authenticates the sync engine to fetch your own posts, including video HLS stream URLs.
-        </p>
-        <SessionManager initialHasSession={hasSessionId} sessionExpired={sessionExpired} />
-        {sessionExpired && (
-          <div className="mt-4 p-3 bg-red-950/20 border border-red-900/30 rounded-lg">
-            <p className="text-sm text-red-400">
-              Your session appears to have expired. Please extract a fresh session_id from your browser.
-            </p>
-          </div>
-        )}
-      </div>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold text-zinc-100">Creator Accounts</h2>
+        </div>
 
-      {/* Sync Status */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-zinc-100">Patreon Sync</h2>
-          <span
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium ${
-              syncStatus?.status === "success"
-                ? "bg-green-950/50 text-green-400 border border-green-900/30"
-                : syncStatus?.status === "running"
-                ? "bg-blue-950/50 text-blue-400 border border-blue-900/30"
-                : syncStatus?.status === "session_expired"
-                ? "bg-red-950/50 text-red-400 border border-red-900/30"
-                : syncStatus?.status === "error"
-                ? "bg-amber-950/50 text-amber-400 border border-amber-900/30"
-                : "bg-zinc-800 text-zinc-400 border border-zinc-700"
-            }`}
-          >
-            {syncStatus?.status || "idle"}
-          </span>
-        </div>
-        <div className="space-y-2 text-sm text-zinc-400">
-          <p>
-            Last synced:{" "}
-            {syncStatus?.lastSyncAt
-              ? format(syncStatus.lastSyncAt, "MMMM d, yyyy 'at' h:mm a")
-              : "Never"}
-          </p>
-          {syncStatus?.errorLog && (
-            <p className="text-red-400 bg-red-950/20 rounded-lg p-2 text-xs">
-              Error: {syncStatus.errorLog}
-            </p>
+        <div className="space-y-6">
+          {accounts.length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-zinc-500">No creator accounts yet. Create your first one below.</p>
+            </div>
           )}
+
+          {accounts.map((account) => (
+            <div
+              key={account.id}
+              className="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-4"
+            >
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold text-zinc-100">{account.name}</h3>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <span
+                      className={`px-2 py-0.5 rounded-lg text-xs font-medium ${
+                        account.status === "success"
+                          ? "bg-green-950/50 text-green-400 border border-green-900/30"
+                          : account.status === "running"
+                          ? "bg-blue-950/50 text-blue-400 border border-blue-900/30"
+                          : account.status === "session_expired"
+                          ? "bg-red-950/50 text-red-400 border border-red-900/30"
+                          : account.status === "error"
+                          ? "bg-amber-950/50 text-amber-400 border border-amber-900/30"
+                          : "bg-zinc-800 text-zinc-400"
+                      }`}
+                    >
+                      {account.status || "idle"}
+                    </span>
+                    {account.lastSyncAt && (
+                      <span className="text-xs text-zinc-500">
+                        Last sync: {format(account.lastSyncAt, "MMM d, h:mm a")}
+                      </span>
+                    )}
+                    {account.patreonCampaignId && (
+                      <span className="text-xs font-mono text-zinc-600">
+                        Campaign: {account.patreonCampaignId.slice(0, 8)}...
+                      </span>
+                    )}
+                  </div>
+                  {account.errorLog && (
+                    <p className="mt-1.5 text-xs text-red-400 bg-red-950/20 rounded-lg p-1.5">
+                      {account.errorLog}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <SyncButton accountId={account.id} />
+                  <DeleteAccountButton accountId={account.id} accountName={account.name} />
+                </div>
+              </div>
+
+              {/* Session manager for this account */}
+              <div className="border-t border-zinc-700/30 pt-3">
+                <p className="text-xs text-zinc-500 mb-2">
+                  Patreon <code className="px-1 py-0.5 rounded bg-zinc-800 text-violet-400 text-xs">session_id</code>
+                </p>
+                <SessionManager account={account as any} />
+              </div>
+            </div>
+          ))}
         </div>
-        <SyncButton />
+
+        {/* Add new account */}
+        <div className="mt-6 pt-6 border-t border-zinc-700/50">
+          <h3 className="text-sm font-semibold text-zinc-300 mb-3">Add New Account</h3>
+          <AddAccountForm />
+        </div>
       </div>
 
       {/* Invite Management */}
@@ -114,3 +143,5 @@ export default async function AdminPage() {
     </div>
   );
 }
+
+

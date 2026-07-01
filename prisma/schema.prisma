@@ -58,22 +58,40 @@ model InviteCode {
   users        User[]
 }
 
-model Post {
-  id           String    @id @default(uuid())
-  patreonId    String?   @unique
-  title        String
-  content      String?
-  contentHtml  String?
-  type         PostType  @default(TEXT)
-  thumbnailUrl String?
-  embedHtml    String?
-  publishedAt  DateTime  @default(now())
-  isPublished  Boolean   @default(true)
-  tags         String[]  @default([])
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+model CreatorAccount {
+  id               String    @id @default(uuid())
+  name             String
+  patreonSessionId String?
+  sessionExpiresAt DateTime?
+  patreonCampaignId String?
+  lastSyncAt       DateTime?
+  cursor           String?
+  status           String    @default("idle")
+  errorLog         String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  media        Media[]
+  posts            Post[]
+}
+
+model Post {
+  id               String          @id @default(uuid())
+  patreonId        String?         @unique
+  title            String
+  content          String?
+  contentHtml      String?
+  type             PostType        @default(TEXT)
+  thumbnailUrl     String?
+  embedHtml        String?
+  publishedAt      DateTime        @default(now())
+  isPublished      Boolean         @default(true)
+  tags             String[]        @default([])
+  creatorAccountId String?
+  creatorAccount   CreatorAccount? @relation(fields: [creatorAccountId], references: [id], onDelete: SetNull)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  media            Media[]
 }
 
 model Media {
@@ -96,14 +114,8 @@ model Media {
 }
 
 model SyncState {
-  id               String    @id @default("main")
-  lastSyncAt       DateTime?
-  cursor           String?
-  status           String    @default("idle")
-  errorLog         String?
-  patreonSessionId String?
-  sessionExpiresAt DateTime?
-  updatedAt        DateTime  @updatedAt
+  id        String    @id @default("main")
+  updatedAt DateTime  @updatedAt
 }
 
 model Account {
