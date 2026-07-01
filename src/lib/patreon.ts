@@ -203,6 +203,26 @@ function extractVideoFromIncluded(included: PatreonIncluded[]): ExtractedVideo |
   for (const item of included) {
     const attrs = item.attributes as Record<string, unknown>;
 
+    // display — often contains the HLS manifest URL (e.g., for video_external_file posts)
+    // This is the PRIMARY source for HLS URLs on Patreon!
+    const display = attrs.display as string | Record<string, unknown> | undefined;
+    if (display) {
+      const displayStr = typeof display === "string" ? display : JSON.stringify(display);
+      // Check for signed HLS URL in display
+      const hlsMatch = displayStr.match(
+        /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\.m3u8\?token=[^"'\s<>]+/i
+      );
+      if (hlsMatch) return { url: hlsMatch[0], isHls: true };
+      // Check for signed MP4 URL in display
+      const mp4Match = displayStr.match(
+        /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\/[^"'\s<>]*\.mp4\?token=[^"'\s<>]+/i
+      );
+      if (mp4Match) return { url: mp4Match[0], isHls: false };
+    }
+
+    // mimetype — application/x-mpegURL indicates HLS
+    const mimetype = typeof attrs.mimetype === "string" ? attrs.mimetype : "";
+
     const dl = typeof attrs.download_url === "string" ? attrs.download_url : "";
     const stream = typeof attrs.stream_url === "string" ? attrs.stream_url : "";
 
@@ -211,7 +231,6 @@ function extractVideoFromIncluded(included: PatreonIncluded[]): ExtractedVideo |
     if (urls) {
       for (const key of Object.keys(urls)) {
         const val = urls[key];
-        // Only add actual stream URLs, not image.mux.com thumbnails
         if (val && (val.includes(".m3u8") || val.includes(".mp4") || val.includes("stream.mux.com"))) {
           candidates.push(val);
         }
@@ -220,11 +239,9 @@ function extractVideoFromIncluded(included: PatreonIncluded[]): ExtractedVideo |
 
     for (const url of candidates) {
       if (!url || !url.includes("mux.com")) continue;
-      // HLS (.m3u8) takes priority
-      if (url.includes(".m3u8")) return { url, isHls: true };
-      // Direct MP4 from Mux
+      // If mimetype says HLS, prioritize .m3u8
+      if (mimetype.includes("mpegurl") || url.includes(".m3u8")) return { url, isHls: true };
       if (url.includes(".mp4")) return { url, isHls: false };
-      // Any other Mux URL — assume HLS
       return { url, isHls: true };
     }
   }
