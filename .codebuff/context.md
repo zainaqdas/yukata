@@ -14,56 +14,52 @@
 
 ## What This Project Is
 
-A private, members-only content platform for a Patreon creator to share their Patreon content with paying members. Only invited members get access. Supports multiple Patreon creator accounts, each with its own session_id and independent sync state.
+A private, members-only content platform for a Patreon creator to share their Patreon content with paying members. Only invited members get access. Supports multiple Patreon creator accounts (both owned and followed), each with independent sync state.
 
 ---
 
 ## Core Architecture
 
 ### 1. Multi-Account Patreon Sync (Cookie-Based)
-- Uses `session_id` cookie to hit Patreon's internal REST API at `/api/posts`
-- Each `CreatorAccount` stores its own `session_id`, cursor, campaign ID, status, and error log
-- `syncAccountPosts(accountId)` and `syncAllAccounts()` entry points
-- Optional `__cf_bm` env var for Cloudflare bypass (shared across accounts)
+
+**Two types of CreatorAccount:**
+- **Owned** (`isOwned=true`) — has its own `session_id` cookie. The creator's own Patreon account.
+- **Followed** (`isOwned=false`, `parentAccountId` set) — uses the parent's session_id. Created via discovery.
+
+**Key functions:**
+- `resolveAuthAccount(accountId)` — walks up `parentAccountId` chain to find an owned account with a session
+- `discoverFollowedCampaigns(parentId)` — hits `/api/campaigns?filter[is_following]=true`, creates `CreatorAccount` records with `isOwned=false` + `parentAccountId`
+- `syncAccountPosts(accountId)` — works for both types; followed accounts use parent's session via `resolveAuthAccount`
+- `syncAllAccounts()` — iterates owned accounts (with session) + followed accounts (with campaign ID)
 - Engine: `src/lib/patreon.ts`
 
 ### 2. Mux Video — Two Patreon Formats (HLS + MP4)
-
-Patreon serves video through Mux.com in two formats:
 
 | Post Type | Embed HTML | Video Source | Format |
 |---|---|---|---|
 | `video` / `video_embed` | Yes | `embed.html` | Signed HLS .m3u8 |
 | `video_external_file` | No | `included[].attributes.display` | Signed HLS .m3u8 |
 
-**Critical discovery:** For `video_external_file` posts (the most common), the HLS URL is in `attrs.display` — a field we initially missed. Patreon's `attrs.download_url` contains an MP4 download (different Mux asset, different playback ID, different token). MP4 tokens are NOT valid for HLS (tested: returns 403).
+**Critical discovery:** HLS URL lives in `attrs.display` (not `download_url` — that's a different Mux asset for downloading).
 
-#### Extraction Pipeline (priority order)
-
-1. **`extractVideoFromIncluded()`** — iterates Patreon `included` media:
-   - `attrs.display` (PRIMARY HLS source) — string or object, regex-matched
-   - `attrs.mimetype` — `application/x-mpegURL` confirms HLS
-   - `attrs.download_url` / `attrs.stream_url` / `attrs.urls` — fallbacks
-   - Returns `ExtractedVideo { url, isHls }`
-
-2. **`extractVideoFromEmbed()`** — embed HTML regex for `video`/`video_embed` types
-
-3. **`storeVideoMedia()`** — stores HLS in `hlsManifestUrl`, MP4 in `url`, both with JWT expiry
+#### Extraction Pipeline
+1. `extractVideoFromIncluded()` — checks `attrs.display` first, then `mimetype`, then `download_url`/`stream_url`/`urls`
+2. `extractVideoFromEmbed()` — embed HTML regex fallback
+3. `storeVideoMedia()` — stores HLS in `hlsManifestUrl`, MP4 in `url`
+4. Returns `ExtractedVideo { url, isHls }`
 
 #### JWT Token Handling
-- `parseJwtExpiry(token)` — `Buffer.from(payload, "base64url")`, reads `exp`, 5-min buffer
-- `getVideoExpiry(url)` — parses `?token=` from URL; falls back to 24h
-- URLs are signed per-rendition: HLS token != MP4 token
+- `MUX_HLS_RE` / `MUX_MP4_RE` — module-level signed URL regex constants
+- `parseJwtExpiry(token)` — `Buffer.from(payload, "base64url")`, 5-min buffer
+- `getVideoExpiry(url)` — parses `?token=`; falls back to 24h
 
 ### 3. Auth.js v5 Magic Links + Invite Codes
-- Email magic links only, no passwords
-- Gated by invite codes: validate + claim on sign-in
-- Admin role controls sync, invites, HLS management
+- Email magic links, invite-code gated
+- `signIn` callback claims invite codes automatically
 - Type augmentation adds `role` to Session/User
 
 ### 4. Prisma 5 + Vercel Cron
-- 9 models: User, InviteCode, CreatorAccount, Post, Media, SyncState, Account, Session, VerificationToken
-- Vercel cron: sync every 15 min, HLS check every hour
+- 9 models, Vercel cron: sync every 15 min, HLS check every hour
 
 ---
 
@@ -71,7 +67,7 @@ Patreon serves video through Mux.com in two formats:
 
 | Model | Key Fields |
 |---|---|
-| **CreatorAccount** | name, patreonSessionId, sessionExpiresAt, patreonCampaignId, lastSyncAt, cursor, status, errorLog |
+| **CreatorAccount** | name, patreonSessionId, patreonCampaignId, lastSyncAt, cursor, status, errorLog, **isOwned** (default true), **parentAccountId** (self-relation FK) |
 | **Post** | patreonId (@unique), title, type, content, embedHtml, thumbnailUrl, creatorAccountId (FK) |
 | **Media** | postId (FK), type (HLS_VIDEO/IMAGE/ATTACHMENT/EMBED), hlsManifestUrl, url, hlsExpiresAt |
 
@@ -81,13 +77,14 @@ Patreon serves video through Mux.com in two formats:
 
 | File | Purpose |
 |---|---|
-| `src/lib/patreon.ts` | Multi-account sync engine. Cookie auth, pagination (500ms delay), Mux extraction pipeline, JWT parsing, account CRUD. |
+| `src/lib/patreon.ts` | Multi-account sync engine. Cookie auth, pagination, Mux extraction, JWT parsing, account CRUD, followed-campaign discovery. |
 | `src/lib/auth.ts` | Auth.js v5 with Nodemailer, invite-code claiming, role augmentation |
 | `src/lib/hls.ts` | HLS/MP4 URL storage, active URL lookup, expiry checking |
-| `src/components/VideoPlayer.tsx` | video.js player supporting both HLS (.m3u8) and direct MP4 |
-| `prisma/schema.prisma` | 9 models |
-| `src/app/(auth)/admin/` | Multi-account dashboard with per-account session, sync, add/delete |
+| `src/components/VideoPlayer.tsx` | video.js player supporting HLS and direct MP4 |
+| `prisma/schema.prisma` | 9 models including CreatorAccount self-relation |
+| `src/app/(auth)/admin/` | Admin dashboard with owned/followed badges, per-account session/sync, discover followed, add/delete |
 | `src/app/api/accounts/route.ts` | Creator account CRUD |
+| `src/app/api/accounts/discover/route.ts` | Discover followed campaigns from Patreon |
 | `src/app/api/session/route.ts` | Per-account session_id management |
 | `src/app/api/sync/route.ts` | Single-account or sync-all |
 
@@ -108,6 +105,25 @@ PATREON_CF_BM_COOKIE  # (optional) Cloudflare bypass
 
 ---
 
+## API Routes
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `GET/POST /api/auth/*` | Public | Magic-link auth |
+| `GET /api/posts` | Member | Post list, optional `creatorAccountId` filter |
+| `GET /api/posts/[id]` | Member | Post detail + active video URL |
+| `GET /api/invites/validate` | Public | Validate & claim invite codes |
+| `GET/POST/DELETE /api/invites` | Admin | CRUD invite codes |
+| `POST /api/hls` | Admin | Submit/refresh video URL |
+| `GET/POST /api/sync` | Admin | Sync single account or all |
+| `GET/POST/DELETE /api/session` | Admin | Per-account session_id |
+| `GET/POST/DELETE /api/accounts` | Admin | Creator account CRUD |
+| `POST /api/accounts/discover` | Admin | Discover followed creators |
+| `GET /api/cron/sync-patreon` | CRON_SECRET | Auto sync all accounts |
+| `GET /api/cron/refresh-hls` | CRON_SECRET | HLS expiry check |
+
+---
+
 ## Mux JWT Token Format
 
 ```
@@ -121,12 +137,13 @@ JWT payload: `{ sub: PLAYBACK_ID, exp: unix_ts, aud: "v", playback_restriction_i
 ## What's Done
 
 - [x] Next.js 14 + TypeScript + Tailwind
-- [x] Prisma 5 with 9 models
+- [x] Prisma 5 with 9 models (CreatorAccount self-relation)
 - [x] Auth.js v5 magic links + invite codes
-- [x] Multi-account cookie-based Patreon sync
+- [x] Multi-account cookie-based Patreon sync (owned + followed)
+- [x] Followed creator discovery via Patreon API
 - [x] Mux JWT token parsing with accurate expiry
 - [x] Both HLS (.m3u8 from display/embed) and MP4 (.mp4 from download_url) video formats
-- [x] Admin dashboard: account CRUD, per-account session & sync, invite manager
+- [x] Admin dashboard: account CRUD, per-account session & sync, discover followed, invite manager
 - [x] Frontend: posts, gallery, search, video player
 - [x] All API routes + Vercel cron
 - [x] SETUP.md, README.md, .env.example, vercel.json
@@ -148,16 +165,18 @@ JWT payload: `{ sub: PLAYBACK_ID, exp: unix_ts, aud: "v", playback_restriction_i
 
 ## Git History (latest first)
 
-1. `fix: extract HLS URLs from media display field`
-2. `fix: support both MP4 and HLS video formats from Mux`
-3. `fix: preserve Mux JWT token in HLS URLs`
-4. `feat: multi-creator-account support`
-5. `docs: add README.md and AI context file`
-6. `docs: add deployment guide, vercel config, and env template`
-7. `feat: cookie-based Patreon sync with auto HLS extraction`
-8. `Initial commit`
+1. `feat: add followed creator discovery and sync`
+2. `refactor: extract Mux HLS/MP4 regexes to module-level constants`
+3. `fix: extract HLS URLs from media display field`
+4. `fix: support both MP4 and HLS video formats from Mux`
+5. `fix: preserve Mux JWT token in HLS URLs`
+6. `feat: multi-creator-account support`
+7. `docs: add README.md and AI context file`
+8. `docs: add deployment guide, vercel config, and env template`
+9. `feat: cookie-based Patreon sync with auto HLS extraction`
+10. `Initial commit`
 
 ---
 
 **Last updated:** July 1, 2026
-**Session ended with:** Display field discovery — HLS extraction now works for all Patreon video formats. 7/7 posts tested successfully.
+**Session ended with:** Followed creator discovery — can now sync posts from creators you follow on Patreon. All video formats handled correctly.
