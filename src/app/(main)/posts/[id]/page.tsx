@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getActiveHlsUrl } from "@/lib/hls";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { format } from "date-fns";
 import Link from "next/link";
@@ -27,17 +28,19 @@ export default async function PostDetailPage({
   let videoExpiresAt: Date | null = null;
 
   if (post.type === "VIDEO") {
-    const activeMedia = post.media.find(
-      (m) =>
-        m.type === "HLS_VIDEO" &&
-        (m.hlsManifestUrl || m.url) &&
-        m.hlsExpiresAt &&
-        m.hlsExpiresAt > new Date()
-    );
-    if (activeMedia) {
-      hlsUrl = activeMedia.hlsManifestUrl || null;
-      directUrl = activeMedia.url || null;
-      videoExpiresAt = activeMedia.hlsExpiresAt;
+    const activeHls = await getActiveHlsUrl(id);
+    if (activeHls) {
+      hlsUrl = activeHls.hlsManifestUrl;
+      directUrl = activeHls.url;
+      videoExpiresAt = activeHls.hlsExpiresAt;
+    } else {
+      // Fallback: find any non-expired direct MP4 video media
+      const directMedia = post.media.find(
+        (m) => m.url && (!m.hlsExpiresAt || m.hlsExpiresAt > new Date())
+      );
+      if (directMedia) {
+        directUrl = directMedia.url;
+      }
     }
   }
 

@@ -73,7 +73,14 @@ export async function markHlsExpired(mediaId: string) {
 
 export async function getAllVideos() {
   return prisma.media.findMany({
-    where: { type: "HLS_VIDEO" },
+    where: {
+      type: "HLS_VIDEO",
+      // Only show videos with no expiry info or ones that haven't expired yet
+      OR: [
+        { hlsExpiresAt: null },
+        { hlsExpiresAt: { gt: new Date() } },
+      ],
+    },
     include: { post: { select: { title: true, thumbnailUrl: true, publishedAt: true } } },
     orderBy: { createdAt: "desc" },
   });

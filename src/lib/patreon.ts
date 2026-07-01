@@ -275,12 +275,32 @@ export function extractVideoFromIncluded(included: PatreonIncluded[]): Extracted
   return null;
 }
 
+// ─── HTML content helper ──────────────────────────────
+
+/** Strip HTML tags and decode common entities for plain text display */
+function stripHtml(html: string): string {
+  return html
+    // Convert block-level closing tags to newlines for paragraph separation
+    .replace(/<\/(?:p|div|h[1-6]|blockquote|li|tr|th|td)\s*>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")   // Convert <br> to newlines
+    .replace(/<[^>]*>/g, "")          // Remove remaining HTML tags
+    .replace(/&nbsp;/gi, " ")         // Replace &nbsp; with space
+    .replace(/&amp;/gi, "&")           // Replace &amp; with &
+    .replace(/&lt;/gi, "<")            // Replace &lt; with <
+    .replace(/&gt;/gi, ">")            // Replace &gt; with >
+    .replace(/&quot;/gi, '"')          // Replace &quot; with "
+    .replace(/&#39;/gi, "'")           // Replace &#39; with '
+    .replace(/\s+\n/g, "\n")         // Clean up whitespace before newlines
+    .replace(/\n{3,}/g, "\n\n")       // Max one blank line
+    .trim();
+}
+
 // ─── Fetch helpers ────────────────────────────────────
 
 async function fetchPostDetails(accountId: string, postId: string): Promise<PatreonResponse> {
   return patreonCookieFetch(
     accountId,
-    `/api/posts/${postId}?include=media,attachments,campaign,access_rules,user&fields[post]=title,content,published_at,post_type,embed,image,teaser_text,url,post_metadata&fields[media]=id,type,attributes,download_url,image_urls,urls`
+    `/api/posts/${postId}?include=media,attachments,campaign,access_rules,user&fields[post]=title,content,published_at,post_type,embed,image,teaser_text,url,post_metadata&fields[media]=id,type,display,mimetype,download_url,stream_url,urls,image_urls`
   );
 }
 
@@ -294,7 +314,7 @@ async function fetchCampaignPosts(accountId: string, campaignId: string, cursor?
     "page[count]": "20",
     "fields[post]":
       "title,content,published_at,post_type,embed,image,teaser_text,url,comment_count,like_count,edited_at,post_metadata",
-    "fields[media]": "id,type,attributes,download_url,image_urls,urls",
+    "fields[media]": "id,type,display,mimetype,download_url,stream_url,urls,image_urls",
   });
   if (cursor) params.set("page[cursor]", cursor);
   return patreonCookieFetch(accountId, `/api/posts?${params.toString()}`);
@@ -464,7 +484,7 @@ export async function syncAccountPosts(accountId: string): Promise<SyncResult> {
             data: {
               patreonId: post.id,
               title: attrs.title || "Untitled",
-              content: attrs.content || attrs.teaser_text || "",
+              content: stripHtml(attrs.content || "") || attrs.teaser_text || "",
               contentHtml: embedHtml,
               type: postType,
               thumbnailUrl,

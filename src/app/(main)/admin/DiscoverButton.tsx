@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";export function DiscoverButton({ accountId }: { accountId: string }) {
+import { useRouter } from "next/navigation";
+
+export function DiscoverButton({ accountId }: { accountId: string }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);

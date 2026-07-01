@@ -194,7 +194,13 @@ describe("getAllVideos", () => {
     const result = await getAllVideos();
 
     expect(mockMediaFindMany).toHaveBeenCalledWith({
-      where: { type: "HLS_VIDEO" },
+      where: {
+        type: "HLS_VIDEO",
+        OR: [
+          { hlsExpiresAt: null },
+          { hlsExpiresAt: { gt: expect.any(Date) } },
+        ],
+      },
       include: { post: { select: { title: true, thumbnailUrl: true, publishedAt: true } } },
       orderBy: { createdAt: "desc" },
     });

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function HlsSubmitForm({ postId }: { postId: string }) {
+  const router = useRouter();
   const [hlsUrl, setHlsUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -20,7 +22,8 @@ export default function HlsSubmitForm({ postId }: { postId: string }) {
         body: JSON.stringify({ postId, hlsManifestUrl: hlsUrl, durationMinutes: 120 }),
       });
       if (res.ok) {
-        setResult("HLS URL submitted successfully. Refresh the page to watch.");
+        setResult("HLS URL submitted successfully.");
+        router.refresh();
       } else {
         const err = await res.json();
         setResult(`Error: ${err.error}`);

@@ -148,10 +148,10 @@ export default async function AdminPage() {
                       id: account.id,
                       name: account.name,
                       patreonSessionId: account.patreonSessionId,
-                      sessionExpiresAt: account.sessionExpiresAt,
+                      sessionExpiresAt: account.sessionExpiresAt?.toISOString() ?? null,
                       status: account.status,
                       errorLog: account.errorLog,
-                      lastSyncAt: account.lastSyncAt,
+                      lastSyncAt: account.lastSyncAt?.toISOString() ?? null,
                       patreonCampaignId: account.patreonCampaignId,
                     }} />
                   </div>

@@ -32,18 +32,23 @@ A content platform that syncs Patreon posts (including video) for sharing via a 
 - `syncAccountPosts(accountId)` — works for both types
 - `syncAllAccounts()` — iterates all accounts
 - `listCreatorAccountsSafe()` — strips `patreonSessionId`/`sessionExpiresAt` for API responses
+- `stripHtml(html)` — strips HTML tags, decodes entities, converts block tags to newlines for clean plain-text content
 - Exported pure functions: `mapPostType`, `parseJwtExpiry`, `getVideoExpiry`, `extractVideoFromEmbed`, `extractVideoFromIncluded`, `MUX_HLS_RE`, `MUX_MP4_RE`
 
-### 2. Mux Video — Two Patreon Formats
+### 2. Mux Video — Multiple Patreon Formats
 
 | Post Type | Source Field | Format |
 |---|---|---|
 | `video` / `video_embed` | `embed.html` | Signed HLS .m3u8 |
-| `video_external_file` | `included[].attributes.display` | Signed HLS .m3u8 |
+| `video_external_file` | `included[].attributes.download_url` | Signed MP4 (Mux) |
+| all video types | `included[].attributes.display` | Signed HLS .m3u8 |
+| all video types | `included[].attributes.stream_url` | Signed HLS .m3u8 |
 
 **Extraction pipeline:** `display` → `mimetype` → `download_url`/`stream_url`/`urls` → embed HTML
 **Regex constants:** `MUX_HLS_RE`, `MUX_MP4_RE` (module-level, exported)
 **JWT:** `parseJwtExpiry()` with 5-min buffer
+
+**API fieldset fix:** The `fields[media]` sparse fieldset now explicitly requests `display`, `mimetype`, `download_url`, `stream_url`, `urls`, and `image_urls` — ensuring all video extraction paths have the data they need.
 
 ### 3. No Auth — Public Link Access
 
@@ -133,10 +138,11 @@ HLS_REFRESH_INTERVAL_MINUTES    # (optional) Minutes before HLS expiry to trigge
 - [x] 7/7 real Patreon posts verified — HLS extraction from display field
 - [x] Typechecks clean, builds clean
 - [x] **Auth removed** — no login, no invite codes, public link access
-- [x] **Audit fixes** — `patreonSessionId` leak fixed, 18 `as any` eliminated, `<a>`→`<Link>`, error types, env var validation
+- [x] **Audit fixes (round 1)** — `patreonSessionId` leak fixed, 18 `as any` eliminated, `<a>`→`<Link>`, error types, env var validation
 - [x] **53 unit tests** — Vitest + TanStack Query mocks for patreon.ts (41) and hls.ts (12), `npm test` / `npm run test:watch`
 - [x] **Client-side real-time search** — debounced 300ms auto-search via `/api/posts`, TanStack Query with `keepPreviousData`, skeleton loading, internal pagination
 - [x] **Env vars documented** — `PATREON_CAMPAIGN_ID`, `HLS_REFRESH_INTERVAL_MINUTES` in `.env.example`, `SETUP.md`, `README.md`
+- [x] **Audit fixes (round 2)** — See full details below
 
 ---
 
@@ -162,4 +168,23 @@ HLS_REFRESH_INTERVAL_MINUTES    # (optional) Minutes before HLS expiry to trigge
 ---
 
 **Last updated:** July 1, 2026
-**Session ended with:** Full e2e audit completed — security fixes, type safety, lint cleanup. 53 unit tests added for sync engine and HLS management. Search page converted to client-side real-time filtering with debounced input and TanStack Query. Env vars documented across all docs. 4 new commits total, pushing to GitHub. Next up: CI workflow, integration tests, or deployment.
+
+**Session: E2E Audit + 8 Bugfixes**
+
+- Ran full end-to-end audit across all files and the entire pipeline
+- **Tested with real Patreon API** using provided session_id and __cf_bm cookies — fetched post "86 Episodes 21-23 (Free Version)" (type: `video_external_file`)
+- Verified Mux URL extraction works: found `stream.mux.com/...720p.mp4?token=...` in `download_url` field
+
+**8 fixes applied:**
+1. **API sparse fieldsets** — Added `display`, `mimetype`, `stream_url` to `fields[media]` in both fetch functions so video extraction can access all sources
+2. **HTML content** — Added `stripHtml()` that converts block tags + `<br>` to newlines, decodes HTML entities, stores clean plain text in `content`
+3. **`.env.example` cleanup** — Removed unused `PATREON_SESSION_ID` env var
+4. **Post detail HLS logic** — Replaced duplicate inline logic with shared `getActiveHlsUrl()` + MP4 fallback
+5. **Gallery expiry filter** — `getAllVideos()` now excludes expired HLS videos
+6. **SessionManager types** — Fixed `Date | null` → `string | null` for serialized props + `.toISOString()` in AdminPage
+7. **DiscoverButton formatting** — Added missing newline
+8. **HLS submit refresh** — Added `router.refresh()` after submitting HLS URL
+
+**Tests:** 53/53 passing | **TypeScript:** Clean
+
+**Next up:** CI workflow, integration tests, or deployment.
