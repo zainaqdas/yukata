@@ -150,50 +150,83 @@ function mapPostType(patreonType: string | undefined): string {
 
 // ─── HLS URL Extraction ───────────────────────────────
 
-function extractMuxPlaybackId(html: string | null): string | null {
-  if (!html) return null;
-  const dpMatch = html.match(/data-playback-id=["']([^"']+)["']/);
-  if (dpMatch) return dpMatch[1];
-  const streamMatch = html.match(/stream\.mux\.com\/([a-zA-Z0-9]+)/);
-  if (streamMatch) return streamMatch[1];
-  const muxMatch = html.match(/mux\.com\/embed\/([a-zA-Z0-9]+)/);
-  if (muxMatch) return muxMatch[1];
-  const srcMatch = html.match(/src=["']https?:\/\/[^"']*mux[^"']*["']/i);
-  if (srcMatch) {
-    const idMatch = srcMatch[0].match(/\/([a-zA-Z0-9]{15,30})\b/);
-    if (idMatch) return idMatch[1];
+/**
+ * Decode a JWT payload (no verification) to extract the `exp` claim.
+ * Returns the expiry date, or null if not found / invalid.
+ */
+function parseJwtExpiry(token: string): Date | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8"));
+    if (payload.exp && typeof payload.exp === "number") {
+      // exp is in seconds; give a 5-min buffer so we refresh before actual expiry
+      return new Date((payload.exp - 300) * 1000);
+    }
+    return null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
-function buildMuxHlsUrl(playbackId: string): string {
-  return `https://stream.mux.com/${playbackId}.m3u8`;
+/**
+ * If the HLS URL has a JWT `?token=` param, parse it to get the real
+ * expiry time. Otherwise fall back to a default duration.
+ */
+function getHlsExpiry(hlsUrl: string): Date {
+  try {
+    const url = new URL(hlsUrl);
+    const token = url.searchParams.get("token");
+    if (token) {
+      const jwtExpiry = parseJwtExpiry(token);
+      if (jwtExpiry) return jwtExpiry;
+    }
+  } catch {
+    // not a valid URL — use default
+  }
+  // Fallback: 24 hours from now (Mux tokens typically last 12-24h)
+  return new Date(Date.now() + 24 * 60 * 60 * 1000);
 }
 
 function extractHlsFromEmbed(embedHtml: string | null): string | null {
   if (!embedHtml) return null;
+
+  // Pattern 1: Full signed Mux URL with ?token= JWT
+  // Matches: https://stream.mux.com/{ID}.m3u8?token=eyJ...
+  const signedMatch = embedHtml.match(
+    /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\.m3u8\?token=[^"'\s<>]+/i
+  );
+  if (signedMatch) return signedMatch[0];
+
+  // Pattern 2: Any .m3u8 URL (signed or unsigned)
   const m3u8Match = embedHtml.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/i);
   if (m3u8Match) return m3u8Match[0];
-  const playbackId = extractMuxPlaybackId(embedHtml);
-  if (playbackId) return buildMuxHlsUrl(playbackId);
+
   return null;
 }
 
 function extractHlsFromIncluded(included: PatreonIncluded[]): string | null {
   for (const item of included) {
     const attrs = item.attributes as Record<string, unknown>;
+
+    // download_url — often contains the full signed Mux URL
     if (attrs.download_url && typeof attrs.download_url === "string") {
       const url = attrs.download_url;
       if (url.includes(".m3u8") || url.includes("mux.com")) return url;
     }
+
+    // stream_url — direct stream link if exposed
     if (attrs.stream_url && typeof attrs.stream_url === "string") {
       return attrs.stream_url;
     }
+
+    // urls object — check all keys for stream references
     const urls = attrs.urls as Record<string, string> | undefined;
     if (urls) {
       for (const key of Object.keys(urls)) {
-        if (urls[key]?.includes(".m3u8") || urls[key]?.includes("mux.com")) {
-          return urls[key];
+        const val = urls[key];
+        if (val?.includes(".m3u8") || val?.includes("mux.com")) {
+          return val;
         }
       }
     }
@@ -342,6 +375,7 @@ export async function syncAccountPosts(accountId: string): Promise<{
         }
 
         if (hlsUrl && postType === "VIDEO" && postRecord) {
+          const expiry = getHlsExpiry(hlsUrl);
           const existingMedia = await prisma.media.findFirst({
             where: { postId: postRecord.id, type: "HLS_VIDEO" },
           });
@@ -351,7 +385,7 @@ export async function syncAccountPosts(accountId: string): Promise<{
               where: { id: existingMedia.id },
               data: {
                 hlsManifestUrl: hlsUrl,
-                hlsExpiresAt: new Date(Date.now() + 100 * 60 * 1000),
+                hlsExpiresAt: expiry,
                 hlsRefreshedAt: new Date(),
               },
             });
@@ -361,7 +395,7 @@ export async function syncAccountPosts(accountId: string): Promise<{
                 postId: postRecord.id,
                 type: "HLS_VIDEO",
                 hlsManifestUrl: hlsUrl,
-                hlsExpiresAt: new Date(Date.now() + 100 * 60 * 1000),
+                hlsExpiresAt: expiry,
                 hlsRefreshedAt: new Date(),
                 thumbnailUrl,
               },
