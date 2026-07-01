@@ -6,10 +6,10 @@ interface AccountData {
   id: string;
   name: string;
   patreonSessionId: string | null;
-  sessionExpiresAt: string | null;
+  sessionExpiresAt: Date | null;
   status: string;
   errorLog: string | null;
-  lastSyncAt: string | null;
+  lastSyncAt: Date | null;
   patreonCampaignId: string | null;
 }
 

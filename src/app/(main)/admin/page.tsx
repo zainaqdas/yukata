@@ -67,7 +67,7 @@ export default async function AdminPage() {
 
           {accounts.map((account) => {
             const parent = !account.isOwned && account.parentAccountId
-              ? accounts.find((a) => a.id === account.parentAccountId)
+              ? accounts.find((a: { id: string }) => a.id === account.parentAccountId)
               : null;
 
             return (
@@ -133,7 +133,7 @@ export default async function AdminPage() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <SyncButton accountId={account.id} />
-                    {account.isOwned && <DiscoverButton accountId={account.id} accountName={account.name} />}
+                    {account.isOwned && <DiscoverButton accountId={account.id} />}
                     <DeleteAccountButton accountId={account.id} accountName={account.name} />
                   </div>
                 </div>
@@ -144,7 +144,16 @@ export default async function AdminPage() {
                     <p className="text-xs text-zinc-500 mb-2">
                       Patreon <code className="px-1 py-0.5 rounded bg-zinc-800 text-violet-400 text-xs">session_id</code>
                     </p>
-                    <SessionManager account={account as any} />
+                    <SessionManager account={{
+                      id: account.id,
+                      name: account.name,
+                      patreonSessionId: account.patreonSessionId,
+                      sessionExpiresAt: account.sessionExpiresAt,
+                      status: account.status,
+                      errorLog: account.errorLog,
+                      lastSyncAt: account.lastSyncAt,
+                      patreonCampaignId: account.patreonCampaignId,
+                    }} />
                   </div>
                 )}
               </div>

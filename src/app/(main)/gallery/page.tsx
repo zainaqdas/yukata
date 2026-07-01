@@ -4,6 +4,20 @@ import { MediaGallery } from "@/components/MediaGallery";
 
 export const dynamic = "force-dynamic";
 
+interface ImagePostForGallery {
+  id: string;
+  title: string;
+  publishedAt: string;
+  media: Array<{ thumbnailUrl: string | null; url: string | null }>;
+}
+
+interface VideoMediaForGallery {
+  id: string;
+  postId: string;
+  thumbnailUrl: string | null;
+  post: { title: string; thumbnailUrl: string | null; publishedAt: Date };
+}
+
 export default async function GalleryPage() {
   const [imagePosts, videos] = await Promise.all([
     prisma.post.findMany({
@@ -20,6 +34,27 @@ export default async function GalleryPage() {
     getAllVideos(),
   ]);
 
+  const imagePostsForGallery: ImagePostForGallery[] = imagePosts.map((p) => ({
+    id: p.id,
+    title: p.title,
+    publishedAt: p.publishedAt.toISOString(),
+    media: p.media.map((m) => ({
+      thumbnailUrl: m.thumbnailUrl,
+      url: m.url,
+    })),
+  }));
+
+  const videosForGallery: VideoMediaForGallery[] = videos.map((v) => ({
+    id: v.id,
+    postId: v.postId,
+    thumbnailUrl: v.thumbnailUrl,
+    post: {
+      title: v.post.title,
+      thumbnailUrl: v.post.thumbnailUrl,
+      publishedAt: v.post.publishedAt,
+    },
+  }));
+
   return (
     <div>
       <div className="mb-8">
@@ -29,7 +64,7 @@ export default async function GalleryPage() {
         </p>
       </div>
 
-      <MediaGallery imagePosts={imagePosts as any} videoMedia={videos as any} />
+      <MediaGallery imagePosts={imagePostsForGallery} videoMedia={videosForGallery} />
     </div>
   );
 }

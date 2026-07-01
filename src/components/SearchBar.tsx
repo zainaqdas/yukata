@@ -1,26 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 export function SearchBar() {
+  // Derive initial values from search params — no useEffect syncing needed
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [query, setQuery] = useState(searchParams.get("q") || "");
-  const [type, setType] = useState(searchParams.get("type") || "all");
+  const [query, setQuery] = useState(() => searchParams.get("q") || "");
+  const [type, setType] = useState(() => searchParams.get("type") || "all");
 
-  useEffect(() => {
-    setQuery(searchParams.get("q") || "");
-    setType(searchParams.get("type") || "all");
-  }, [searchParams]);
-
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    const params = new URLSearchParams();
-    if (query) params.set("q", query);
-    if (type && type !== "all") params.set("type", type);
-    router.push(`/search?${params.toString()}`);
-  }
+  const handleSearch = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      const params = new URLSearchParams();
+      if (query) params.set("q", query);
+      if (type && type !== "all") params.set("type", type);
+      router.push(`/search?${params.toString()}`);
+    },
+    [query, type, router]
+  );
 
   return (
     <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">

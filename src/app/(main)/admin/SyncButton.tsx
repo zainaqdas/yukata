@@ -2,6 +2,20 @@
 
 import { useState } from "react";
 
+interface SyncResultEntry {
+  accountName: string;
+  syncedCount: number;
+  total: number;
+  error?: string;
+}
+
+interface SyncApiResponse {
+  results?: SyncResultEntry[];
+  syncedCount?: number;
+  total?: number;
+  error?: string;
+}
+
 export function SyncButton({ accountId }: { accountId?: string }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -18,15 +32,15 @@ export function SyncButton({ accountId }: { accountId?: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(accountId ? { accountId } : {}),
       });
-      const data = await res.json();
+      const data: SyncApiResponse = await res.json();
 
       if (res.ok) {
         if (data.results) {
-          const totalSynced = data.results.reduce((sum: number, r: any) => sum + (r.syncedCount || 0), 0);
-          const failures = data.results.filter((r: any) => r.error);
+          const totalSynced = data.results.reduce((sum: number, r: SyncResultEntry) => sum + (r.syncedCount || 0), 0);
+          const failures = data.results.filter((r: SyncResultEntry) => r.error);
           let msg = `Synced ${totalSynced} posts across ${data.results.length} accounts.`;
           if (failures.length > 0) {
-            msg += ` ${failures.length} account(s) failed: ${failures.map((f: any) => f.accountName).join(", ")}`;
+            msg += ` ${failures.length} account(s) failed: ${failures.map((f: SyncResultEntry) => f.accountName).join(", ")}`;
             setError(msg);
           } else {
             setResult(msg);

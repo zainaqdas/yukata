@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { PostType, Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +13,9 @@ export async function GET(request: Request) {
   const creatorAccountId = searchParams.get("creatorAccountId");
   const skip = (page - 1) * limit;
 
-  const where: Record<string, unknown> = { isPublished: true };
+  const where: Prisma.PostWhereInput = { isPublished: true };
   if (type && type !== "all") {
-    where.type = type.toUpperCase();
+    where.type = type.toUpperCase() as PostType;
   }
   if (search) {
     where.OR = [
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
 
   const [posts, total] = await Promise.all([
     prisma.post.findMany({
-      where: where as any,
+      where,
       orderBy: { publishedAt: "desc" },
       skip,
       take: limit,
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
         },
       },
     }),
-    prisma.post.count({ where: where as any }),
+    prisma.post.count({ where }),
   ]);
 
   return NextResponse.json({

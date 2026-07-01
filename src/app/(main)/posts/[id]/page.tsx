@@ -128,6 +128,7 @@ export default async function PostDetailPage({
                   rel="noopener noreferrer"
                   className="block rounded-xl overflow-hidden bg-zinc-800 border border-zinc-700 hover:border-zinc-600 transition-all"
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={media.thumbnailUrl || media.url || ""}
                     alt=""

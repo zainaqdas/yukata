@@ -14,9 +14,10 @@ export async function POST(request: Request) {
   try {
     const result = await discoverFollowedCampaigns(accountId);
     return NextResponse.json(result);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Discovery failed";
     return NextResponse.json(
-      { error: error.message || "Discovery failed" },
+      { error: message },
       { status: 500 }
     );
   }

@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
+import { PostType } from "@prisma/client";
 
 // ─── Types ────────────────────────────────────────────
+
+type PostTypeEnum = keyof typeof PostType;
 
 const PATREON_BASE = "https://www.patreon.com";
 
@@ -54,6 +57,14 @@ interface ExtractedVideo {
 
 export async function listCreatorAccounts() {
   return prisma.creatorAccount.findMany({ orderBy: { createdAt: "asc" } });
+}
+
+/** Safe version that strips sensitive fields for API responses */
+export async function listCreatorAccountsSafe() {
+  const accounts = await prisma.creatorAccount.findMany({ orderBy: { createdAt: "asc" } });
+  return accounts.map(({ id, name, patreonCampaignId, lastSyncAt, cursor, status, errorLog, isOwned, parentAccountId, createdAt, updatedAt }) => ({
+    id, name, patreonCampaignId, lastSyncAt, cursor, status, errorLog, isOwned, parentAccountId, createdAt, updatedAt,
+  }));
 }
 
 export async function getAccount(accountId: string) {
@@ -144,7 +155,7 @@ async function patreonCookieFetch(accountId: string, path: string): Promise<Patr
 
 // ─── Post Type Mapping ────────────────────────────────
 
-function mapPostType(patreonType: string | undefined): string {
+function mapPostType(patreonType: string | undefined): PostTypeEnum {
   switch (patreonType) {
     case "video":
     case "video_embed":
@@ -394,14 +405,17 @@ async function storeVideoMedia(
 
 // ─── Main Sync Function ───────────────────────────────
 
-export async function syncAccountPosts(accountId: string): Promise<{
+export interface SyncResult {
   accountId: string;
   accountName: string;
   syncedCount: number;
   total: number;
   nextCursor: string | null;
   hlsExtracted: number;
-}> {
+  error?: string;
+}
+
+export async function syncAccountPosts(accountId: string): Promise<SyncResult> {
   const account = await prisma.creatorAccount.findUnique({ where: { id: accountId } });
   if (!account) throw new Error(`Account not found: ${accountId}`);
 
@@ -452,7 +466,7 @@ export async function syncAccountPosts(accountId: string): Promise<{
               title: attrs.title || "Untitled",
               content: attrs.content || attrs.teaser_text || "",
               contentHtml: embedHtml,
-              type: postType as any,
+              type: postType,
               thumbnailUrl,
               embedHtml,
               publishedAt: new Date(attrs.published_at),
@@ -507,16 +521,17 @@ export async function syncAccountPosts(accountId: string): Promise<{
     });
 
     return { accountId, accountName: account.name, syncedCount, total: totalPosts, nextCursor: currentCursor, hlsExtracted };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown sync error";
     await prisma.creatorAccount.update({
       where: { id: accountId },
-      data: { status: "error", errorLog: error.message },
+      data: { status: "error", errorLog: message },
     });
     throw error;
   }
 }
 
-export async function syncAllAccounts(): Promise<Awaited<ReturnType<typeof syncAccountPosts>>[]> {
+export async function syncAllAccounts(): Promise<SyncResult[]> {
   // Get owned accounts with session_id + all followed accounts (which use their parent's session)
   const owned = await prisma.creatorAccount.findMany({
     where: { isOwned: true, patreonSessionId: { not: null } },
@@ -525,12 +540,13 @@ export async function syncAllAccounts(): Promise<Awaited<ReturnType<typeof syncA
     where: { isOwned: false, patreonCampaignId: { not: null } },
   });
   const allAccounts = [...owned, ...followed];
-  const results: Awaited<ReturnType<typeof syncAccountPosts>>[] = [];
+  const results: SyncResult[] = [];
 
   for (const account of allAccounts) {
     try {
       results.push(await syncAccountPosts(account.id));
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Sync failed";
       results.push({
         accountId: account.id,
         accountName: account.name,
@@ -538,8 +554,8 @@ export async function syncAllAccounts(): Promise<Awaited<ReturnType<typeof syncA
         total: 0,
         nextCursor: null,
         hlsExtracted: 0,
-        error: error.message || "Sync failed",
-      } as any);
+        error: message,
+      });
     }
   }
 

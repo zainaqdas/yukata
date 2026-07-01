@@ -15,7 +15,7 @@ interface VideoPlayerProps {
 
 export function VideoPlayer({ hlsUrl, directUrl, poster, className = "" }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const playerRef = useRef<any>(null);
+  const playerRef = useRef<ReturnType<typeof videojs> | null>(null);
 
   // Determine the video source
   const videoUrl = hlsUrl || directUrl || "";

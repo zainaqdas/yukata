@@ -1,10 +1,10 @@
-import { syncAccountPosts, syncAllAccounts, listCreatorAccounts } from "@/lib/patreon";
+import { syncAccountPosts, syncAllAccounts, listCreatorAccountsSafe } from "@/lib/patreon";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const accounts = await listCreatorAccounts();
+  const accounts = await listCreatorAccountsSafe();
   return NextResponse.json(accounts);
 }
 
@@ -22,9 +22,10 @@ export async function POST(request: Request) {
       const results = await syncAllAccounts();
       return NextResponse.json({ results });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Sync failed";
     return NextResponse.json(
-      { error: error.message || "Sync failed" },
+      { error: message },
       { status: 500 }
     );
   }

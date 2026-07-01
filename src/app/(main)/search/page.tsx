@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { SearchBar } from "@/components/SearchBar";
 import { PostGrid } from "@/components/PostGrid";
 import { prisma } from "@/lib/prisma";
 import { Suspense } from "react";
+import { PostType, Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +17,9 @@ export default async function SearchPage({
   const limit = 20;
   const skip = (pageNum - 1) * limit;
 
-  const where: Record<string, unknown> = { isPublished: true };
+  const where: Prisma.PostWhereInput = { isPublished: true };
   if (type && type !== "all") {
-    where.type = type.toUpperCase();
+    where.type = type.toUpperCase() as PostType;
   }
   if (q) {
     where.OR = [
@@ -28,7 +30,7 @@ export default async function SearchPage({
 
   const [posts, total] = await Promise.all([
     prisma.post.findMany({
-      where: where as any,
+      where,
       orderBy: { publishedAt: "desc" },
       skip,
       take: limit,
@@ -45,7 +47,7 @@ export default async function SearchPage({
         },
       },
     }),
-    prisma.post.count({ where: where as any }),
+    prisma.post.count({ where }),
   ]);
 
   const totalPages = Math.ceil(total / limit);
@@ -72,7 +74,7 @@ export default async function SearchPage({
           <p className="text-zinc-600 text-sm mt-1">Try a different search term.</p>
         </div>
       ) : q ? (
-        <PostGrid posts={posts as any} />
+        <PostGrid posts={posts} />
       ) : (
         <div className="text-center py-20">
           <p className="text-zinc-500 text-lg">Enter a search term to find posts.</p>
@@ -82,7 +84,7 @@ export default async function SearchPage({
       {totalPages > 1 && (
         <div className="flex justify-center gap-2 mt-10">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-            <a
+            <Link
               key={p}
               href={`/search?q=${q || ""}${type ? `&type=${type}` : ""}&page=${p}`}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -92,7 +94,7 @@ export default async function SearchPage({
               }`}
             >
               {p}
-            </a>
+            </Link>
           ))}
         </div>
       )}

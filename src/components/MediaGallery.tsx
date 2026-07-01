@@ -3,15 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 
-interface MediaItem {
-  id: string;
-  type: string;
-  url?: string | null;
-  thumbnailUrl?: string | null;
-  postId?: string;
-  post?: { title?: string; thumbnailUrl?: string | null; publishedAt?: Date };
-}
-
 interface MediaGalleryProps {
   imagePosts: Array<{
     id: string;
@@ -68,6 +59,7 @@ export function MediaGallery({ imagePosts, videoMedia }: MediaGalleryProps) {
                     href={`/posts/${post.id}`}
                     className="group relative aspect-square rounded-xl overflow-hidden bg-zinc-800 border border-zinc-700 hover:border-violet-500/50 transition-all"
                   >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={media.thumbnailUrl || media.url || ""}
                       alt={post.title}
@@ -97,6 +89,7 @@ export function MediaGallery({ imagePosts, videoMedia }: MediaGalleryProps) {
                 href={`/posts/${media.postId}`}
                 className="group relative aspect-video rounded-xl overflow-hidden bg-zinc-800 border border-zinc-700 hover:border-violet-500/50 transition-all"
               >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={media.thumbnailUrl || media.post.thumbnailUrl || ""}
                   alt={media.post.title}

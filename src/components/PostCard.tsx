@@ -34,6 +34,7 @@ export function PostCard({ id, title, type, thumbnailUrl, publishedAt, creatorNa
     >
       <div className="aspect-video bg-zinc-800 relative overflow-hidden">
         {displayThumb ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={displayThumb}
             alt={title}

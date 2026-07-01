@@ -50,7 +50,8 @@ export async function getActiveHlsUrl(postId: string) {
 }
 
 export async function getExpiredHlsMedia() {
-  const bufferMinutes = parseInt(process.env.HLS_REFRESH_INTERVAL_MINUTES || "30");
+  const raw = process.env.HLS_REFRESH_INTERVAL_MINUTES;
+  const bufferMinutes = (raw && !isNaN(parseInt(raw))) ? parseInt(raw) : 30;
   const threshold = new Date(Date.now() + bufferMinutes * 60 * 1000);
 
   return prisma.media.findMany({

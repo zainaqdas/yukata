@@ -1,10 +1,12 @@
 import { PostCard } from "@/components/PostCard";
 
+import type { PostType } from "@prisma/client";
+
 interface PostGridProps {
   posts: Array<{
     id: string;
     title: string;
-    type: string;
+    type: PostType;
     thumbnailUrl: string | null;
     publishedAt: Date;
     creatorAccount?: { id: string; name: string } | null;
@@ -26,7 +28,7 @@ export function PostGrid({ posts }: PostGridProps) {
           key={post.id}
           id={post.id}
           title={post.title}
-          type={post.type as any}
+          type={post.type}
           thumbnailUrl={post.thumbnailUrl}
           publishedAt={post.publishedAt.toISOString()}
           creatorName={post.creatorAccount?.name}

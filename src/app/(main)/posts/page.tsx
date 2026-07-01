@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { PostGrid } from "@/components/PostGrid";
 import { CreatorFilter } from "@/components/CreatorFilter";
 import { prisma } from "@/lib/prisma";
-import { PostType } from "@prisma/client";
+import { PostType, Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +16,9 @@ export default async function PostsPage({
   const limit = 20;
   const skip = (pageNum - 1) * limit;
 
-  const where: Record<string, unknown> = { isPublished: true };
+  const where: Prisma.PostWhereInput = { isPublished: true };
   if (type && type !== "all") {
-    where.type = type.toUpperCase();
+    where.type = type.toUpperCase() as PostType;
   }
   if (creator) {
     where.creatorAccountId = creator;
@@ -25,7 +26,7 @@ export default async function PostsPage({
 
   const [posts, total, accounts] = await Promise.all([
     prisma.post.findMany({
-      where: where as any,
+      where,
       orderBy: { publishedAt: "desc" },
       skip,
       take: limit,
@@ -42,7 +43,7 @@ export default async function PostsPage({
         },
       },
     }),
-    prisma.post.count({ where: where as any }),
+    prisma.post.count({ where }),
     prisma.creatorAccount.findMany({
       where: { posts: { some: {} } },
       select: { id: true, name: true },
@@ -78,7 +79,7 @@ export default async function PostsPage({
         <CreatorFilter accounts={accounts} selected={creator} />
 
         <div className="flex flex-wrap gap-2">
-          <a
+          <Link
             href={`/posts?${filterParams({ type: "", page: "" })}`}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
               !type || type === "all"
@@ -87,9 +88,9 @@ export default async function PostsPage({
             }`}
           >
             All
-          </a>
+          </Link>
           {types.map((t) => (
-            <a
+            <Link
               key={t}
               href={`/posts?${filterParams({ type: t.toLowerCase(), page: "" })}`}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
@@ -99,7 +100,7 @@ export default async function PostsPage({
               }`}
             >
               {t}
-            </a>
+            </Link>
           ))}
         </div>
       </div>
@@ -108,19 +109,19 @@ export default async function PostsPage({
         <div className="text-center py-20">
           <p className="text-zinc-500 text-lg">No posts found.</p>
           {(type || creator) && (
-            <a href="/posts" className="text-violet-400 text-sm mt-2 inline-block hover:underline">
+            <Link href="/posts" className="text-violet-400 text-sm mt-2 inline-block hover:underline">
               Clear filters
-            </a>
+            </Link>
           )}
         </div>
       ) : (
-        <PostGrid posts={posts as any} />
+        <PostGrid posts={posts} />
       )}
 
       {totalPages > 1 && (
         <div className="flex justify-center gap-2 mt-10">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-            <a
+            <Link
               key={p}
               href={`/posts?${filterParams({ page: p === 1 ? "" : String(p) })}`}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -130,7 +131,7 @@ export default async function PostsPage({
               }`}
             >
               {p}
-            </a>
+            </Link>
           ))}
         </div>
       )}

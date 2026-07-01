@@ -1,10 +1,10 @@
-import { createAccount, deleteAccount, listCreatorAccounts } from "@/lib/patreon";
+import { createAccount, deleteAccount, listCreatorAccountsSafe } from "@/lib/patreon";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const accounts = await listCreatorAccounts();
+  const accounts = await listCreatorAccountsSafe();
   return NextResponse.json(accounts);
 }
 

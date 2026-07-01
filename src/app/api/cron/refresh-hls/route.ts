@@ -25,9 +25,10 @@ export async function GET(request: Request) {
         expiresAt: m.hlsExpiresAt,
       })),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "HLS refresh cron failed";
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: message },
       { status: 500 }
     );
   }
