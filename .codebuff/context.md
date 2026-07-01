@@ -144,7 +144,7 @@ JWT payload: `{ sub: PLAYBACK_ID, exp: unix_ts, aud: "v", playback_restriction_i
 - [x] Mux JWT token parsing with accurate expiry
 - [x] Both HLS (.m3u8 from display/embed) and MP4 (.mp4 from download_url) video formats
 - [x] Admin dashboard: account CRUD, per-account session & sync, discover followed, invite manager
-- [x] Frontend: posts, gallery, search, video player
+- [x] Frontend: posts feed with creator names, gallery, search, video player (HLS + MP4)
 - [x] All API routes + Vercel cron
 - [x] SETUP.md, README.md, .env.example, vercel.json
 - [x] Tested against 7 real Patreon posts — 7/7 HLS extraction from display field
@@ -165,8 +165,9 @@ JWT payload: `{ sub: PLAYBACK_ID, exp: unix_ts, aud: "v", playback_restriction_i
 
 ## Git History (latest first)
 
-1. `feat: add followed creator discovery and sync`
-2. `refactor: extract Mux HLS/MP4 regexes to module-level constants`
+1. `feat: add home feed with creator names on post cards`
+2. `feat: add followed creator discovery and sync`
+3. `refactor: extract Mux HLS/MP4 regexes to module-level constants`
 3. `fix: extract HLS URLs from media display field`
 4. `fix: support both MP4 and HLS video formats from Mux`
 5. `fix: preserve Mux JWT token in HLS URLs`
@@ -179,4 +180,4 @@ JWT payload: `{ sub: PLAYBACK_ID, exp: unix_ts, aud: "v", playback_restriction_i
 ---
 
 **Last updated:** July 1, 2026
-**Session ended with:** Followed creator discovery — can now sync posts from creators you follow on Patreon. All video formats handled correctly.
+**Session ended with:** Home feed shows creator names on post cards. Followed creator discovery + sync working. All Patreon video formats (HLS from display, MP4 from download_url) handled correctly. 11 commits total.
