@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSession, signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 
 const navLinks = [
@@ -11,12 +10,7 @@ const navLinks = [
 ];
 
 export function Navbar() {
-  const { data: session } = useSession();
   const pathname = usePathname();
-
-  if (!session?.user) return null;
-
-  const isAdmin = session?.user?.role === "ADMIN";
 
   return (
     <nav className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-xl">
@@ -43,27 +37,16 @@ export function Navbar() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {isAdmin && (
-              <Link
-                href="/admin"
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  pathname.startsWith("/admin")
-                    ? "bg-violet-600/20 text-violet-300"
-                    : "text-zinc-400 hover:text-violet-300 hover:bg-violet-600/10"
-                }`}
-              >
-                Admin
-              </Link>
-            )}
-            <span className="text-sm text-zinc-500 hidden sm:block">
-              {session.user.email}
-            </span>
-            <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
-              className="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-red-400 hover:bg-red-950/30 transition-all"
+            <Link
+              href="/admin"
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                pathname.startsWith("/admin")
+                  ? "bg-violet-600/20 text-violet-300"
+                  : "text-zinc-400 hover:text-violet-300 hover:bg-violet-600/10"
+              }`}
             >
-              Sign out
-            </button>
+              Admin
+            </Link>
           </div>
         </div>
         {/* Mobile nav */}

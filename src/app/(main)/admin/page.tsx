@@ -1,27 +1,18 @@
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listCreatorAccounts } from "@/lib/patreon";
-import { listInviteCodes } from "@/lib/invites";
 import { format } from "date-fns";
-import { InviteManager } from "@/components/InviteManager";
 import { SyncButton } from "./SyncButton";
 import { SessionManager } from "./SessionManager";
 import { AddAccountForm } from "./AddAccountForm";
 import { DeleteAccountButton } from "./DeleteAccountButton";
 import { DiscoverButton } from "./DiscoverButton";
-import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  const session = await auth();
-  if (session?.user?.role !== "ADMIN") redirect("/posts");
-
-  const [accounts, inviteCodes, postCount, userCount, videoCount] = await Promise.all([
+  const [accounts, postCount, videoCount] = await Promise.all([
     listCreatorAccounts(),
-    listInviteCodes(),
     prisma.post.count(),
-    prisma.user.count(),
     prisma.media.count({ where: { type: "HLS_VIDEO" } }),
   ]);
 
@@ -35,7 +26,6 @@ export default async function AdminPage() {
 
   const stats = [
     { label: "Total Posts", value: postCount },
-    { label: "Members", value: userCount },
     { label: "Videos", value: videoCount },
     { label: "Owned", value: ownedCount },
     { label: "Followed", value: followedCount },
@@ -53,7 +43,7 @@ export default async function AdminPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
         {stats.map((stat) => (
           <div key={stat.label} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
             <p className="text-sm text-zinc-500">{stat.label}</p>
@@ -168,9 +158,6 @@ export default async function AdminPage() {
           <AddAccountForm />
         </div>
       </div>
-
-      {/* Invite Management */}
-      <InviteManager initialCodes={inviteCodes as any} />
     </div>
   );
 }

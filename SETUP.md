@@ -1,7 +1,7 @@
 # 🚀 PatronHub — Setup & Deployment Guide
 
-A private, members-only content platform for your Patreon community.  
-Automatically syncs your Patreon posts and serves video via Mux HLS streams — no more laggy Patreon UI.
+A content platform for your Patreon community — share with members via a private link.
+Automatically syncs your Patreon posts and serves video via Mux HLS streams.
 
 ---
 
@@ -10,8 +10,7 @@ Automatically syncs your Patreon posts and serves video via Mux HLS streams — 
 - A **GitHub account** (you already have one)
 - A **Vercel account** (free tier works — [sign up](https://vercel.com))
 - A **PostgreSQL database** (see Step 1)
-- An **email provider** for magic-link sign-ins (see Step 2)
-- Your **Patreon `session_id` cookie** (see Step 3)
+- Your **Patreon `session_id` cookie** (see Step 2)
 
 ---
 
@@ -25,36 +24,17 @@ Pick one of these providers:
 | **[Supabase](https://supabase.com)** | ✅ 500 MB | If you also want auth/storage |
 | **[Railway](https://railway.app)** | ❌ Starts at $5/mo | Simple provisioning |
 
-After creating the database, copy your connection string. It looks like:
+After creating the database, copy your connection string:
 
 ```
 postgresql://user:password@ep-cool-name.us-east-2.aws.neon.tech/patronhub?sslmode=require
 ```
 
-> 💡 **Save this** — you'll need it for both Vercel env vars and running migrations.
+> 💡 **Save this** — you'll need it for Vercel env vars and running migrations.
 
 ---
 
-## Step 2: Set Up Email for Magic Links
-
-Auth.js sends magic-link sign-in emails via SMTP. Free tiers:
-
-| Provider | Free Tier | Setup Time |
-|---|---|---|
-| **[Resend](https://resend.com)** | 100 emails/day | ~2 min |
-| **[SendGrid](https://sendgrid.com)** | 100 emails/day | ~5 min |
-| **[Brevo](https://brevo.com)** | 300 emails/day | ~5 min |
-
-After signing up, get your SMTP credentials. Example (Resend):
-
-```
-EMAIL_SERVER="smtp://resend:re_xxxxxxx@smtp.resend.com:587"
-EMAIL_FROM="noreply@yourdomain.com"
-```
-
----
-
-## Step 3: Get Your Patreon `session_id` Cookie
+## Step 2: Get Your Patreon `session_id` Cookie
 
 This is how the app imports your posts — it uses the same cookie your browser uses.
 
@@ -68,7 +48,7 @@ This is how the app imports your posts — it uses the same cookie your browser 
 
 ---
 
-## Step 4: Deploy to Vercel
+## Step 3: Deploy to Vercel
 
 1. Go to [vercel.com/new](https://vercel.com/new)
 2. Click **Import** → select `zainaqdas/yukata`
@@ -78,12 +58,8 @@ This is how the app imports your posts — it uses the same cookie your browser 
 | Key | Value |
 |---|---|
 | `DATABASE_URL` | Your PostgreSQL connection string from Step 1 |
-| `AUTH_SECRET` | Run `openssl rand -hex 32` in terminal, paste result |
-| `AUTH_URL` | `https://your-app-name.vercel.app` (update after deploy) |
-| `EMAIL_SERVER` | SMTP string from Step 2 |
-| `EMAIL_FROM` | `noreply@yourdomain.com` |
-| `CRON_SECRET` | Run `openssl rand -hex 32` again, paste result |
-| `PATREON_CF_BM_COOKIE` | (optional) Cloudflare cookie from Step 3 |
+| `CRON_SECRET` | Run `openssl rand -hex 32`, paste result |
+| `PATREON_CF_BM_COOKIE` | (optional) Cloudflare cookie from Step 2 |
 
 5. Click **Deploy** 🚀
 
@@ -91,7 +67,7 @@ After deployment, Vercel gives you a URL like `https://patron-hub-abc123.vercel.
 
 ---
 
-## Step 5: Run Database Migrations
+## Step 4: Run Database Migrations
 
 Run this from your terminal (replace the URL with your real one):
 
@@ -101,96 +77,54 @@ DATABASE_URL="postgresql://user:pass@host/db?sslmode=require" \
   npx prisma migrate deploy
 ```
 
-This creates all the tables (User, InviteCode, CreatorAccount, Post, Media, SyncState, etc.).
+This creates all the tables (CreatorAccount, Post, Media, SyncState).
 
 ---
 
-## Step 6: Seed the First Invite Code
+## Step 5: Connect Patreon Sync
 
-Since invite codes are required to sign up, insert one directly into the database:
+The admin dashboard supports **multiple creator accounts** — both your own and followed creators.
 
-```sql
-INSERT INTO "InviteCode" (id, code, "maxUses", "isActive", "createdAt", "updatedAt")
-VALUES (gen_random_uuid(), 'SETUP-2026', 1, true, NOW(), NOW());
-```
-
-> Run this in your database provider's SQL console (Neon, Supabase, Railway — all have one).
-
----
-
-## Step 7: Sign In & Promote to Admin
-
-1. Go to `https://your-app.vercel.app/login`
-2. Enter your email + invite code `SETUP-2026`
-3. Check your inbox for the magic link → click it → you're signed in
-4. Promote yourself to admin via SQL:
-
-```sql
-UPDATE "User" SET role = 'ADMIN' WHERE email = 'your@email.com';
-```
-
-5. Refresh the page — you should now see the **Admin** link in the navbar
-
----
-
-## Step 8: Connect Patreon Sync
-
-The admin dashboard supports **multiple creator accounts** — both your own and followed creators whose posts you have access to.
-
-### 8a. Add Your Own Account
+### 5a. Add Your Own Account
 
 1. Go to `/admin`
 2. Under **Add Owned Account**, enter your creator name (e.g. `MyChannel`)
-3. Click **Add** → your account appears in the list with an **Owned** badge
-4. Paste your `session_id` cookie (from Step 3) into the account's **Patreon Session** field
-5. Click **Save**
-6. Click the **Sync** button next to your account
-7. The sync engine will:
-   - Fetch all your Patreon posts (including paid/exclusive if you have membership access)
+3. Click **Add** → your account appears with an **Owned** badge
+4. Paste your `session_id` cookie (from Step 2) into the **Patreon Session** field
+5. Click **Save**, then click **Sync**
+6. The sync engine will:
+   - Fetch all your Patreon posts
    - Extract thumbnails, embeds, and content
-   - Auto-detect Mux HLS video URLs from video posts (via the `display` field)
+   - Auto-detect Mux HLS video URLs (via the `display` field)
    - Store everything in your database
 
-### 8b. Discover Followed Creators
+### 5b. Discover Followed Creators
 
-If you're subscribed to other creators on Patreon, you can also import their posts:
+If you're subscribed to other creators:
 
-1. Make sure your owned account has a valid `session_id` saved
-2. Click the **Discover Followed** button next to your owned account
-3. Followed creator accounts appear with a **Followed** badge (they use your session)
-4. Click **Sync** on each followed account to pull in their posts
+1. Make sure your owned account has a valid `session_id`
+2. Click **Discover Followed** on your owned account
+3. Followed accounts appear with a **Followed** badge
+4. Click **Sync** on each to pull in their posts
 
-> 💡 Followed accounts share the parent account's `session_id` — you only need one active session to sync all your followed creators.
+> 💡 Followed accounts share the parent's `session_id` — one active session syncs everything.
 
-✅ Your content is now live on your private site.
-
----
-
-## Step 9: Invite Your Members
-
-From the admin dashboard (`/admin`):
-
-1. Click **Generate Invite Code**
-2. Set max uses (e.g., `50` for 50 members)
-3. Add a note like "January 2026 — Gold tier"
-4. Share the code with your Patreon members
-5. They sign up at `/login` with email + invite code
-6. Once used, `currentUses` increments — you can track who joined
+✅ Your content is now live. Share the link with your community.
 
 ---
 
 ## 🔄 Ongoing: Keeping Content Fresh
 
-The Vercel cron jobs (set in `vercel.json`) handle this automatically:
+Vercel cron jobs handle this automatically:
 
-- **Every 15 min** → Syncs new posts from all accounts (owned + followed)
+- **Every 15 min** → Syncs new posts from all accounts
 - **Every hour** → Checks for expiring HLS video URLs
 
-You can also trigger a manual sync anytime from `/admin`:
-- **Sync All** button (top of page) → syncs every account
-- **Sync** button per account → syncs just that one
+Manual sync from `/admin`:
+- **Sync All** → syncs every account
+- **Sync** (per account) → syncs just that one
 
-Mux HLS URLs expire based on their JWT tokens (typically ~24 hours). The `hlsExpiresAt` field on each media record tracks this. When tokens expire, re-sync and the HLS URLs will refresh with new tokens.
+Mux HLS URLs expire based on JWT tokens (~24 hours). The `hlsExpiresAt` field tracks this. Re-sync to refresh tokens.
 
 ---
 
@@ -198,12 +132,11 @@ Mux HLS URLs expire based on their JWT tokens (typically ~24 hours). The `hlsExp
 
 | Problem | Fix |
 |---|---|
-| "Magic link email not arriving" | Check spam folder. Verify `EMAIL_SERVER` in Vercel env vars. Test with Resend's dashboard. |
-| "Sync fails / session expired" | Your `session_id` cookie expired. Log into Patreon again, copy the new cookie, find the affected account in `/admin`, paste the new cookie in its **Session** field. Followed accounts share the parent account's session — update the parent. |
-| "Cloudflare CAPTCHA" | Add `__cf_bm` cookie in `/admin` or set `PATREON_CF_BM_COOKIE` env var. |
+| "Sync fails / session expired" | Your `session_id` cookie expired. Log into Patreon again, copy the new cookie, paste it in the account's **Session** field in `/admin`. |
+| "Cloudflare CAPTCHA" | Add `__cf_bm` cookie or set `PATREON_CF_BM_COOKIE` env var. |
 | "Build fails" | Check Vercel build logs. Make sure `DATABASE_URL` is set and `prisma generate` succeeds. |
-| "Database migration fails" | Make sure your IP is allowed in the database provider's firewall settings (Neon/Supabase default to allow all). |
-| "Videos not playing" | The Mux HLS URL may have expired. Go to `/admin` → click **Sync** on the relevant account to refresh. |
+| "Database migration fails" | Make sure your IP is allowed in the database provider's firewall. |
+| "Videos not playing" | The Mux HLS URL may have expired. Go to `/admin` → **Sync** on the relevant account. |
 
 ---
 
@@ -212,23 +145,22 @@ Mux HLS URLs expire based on their JWT tokens (typically ~24 hours). The `hlsExp
 ```
 patron-hub/
 ├── prisma/
-│   └── schema.prisma          # Database models (CreatorAccount, Post, Media, SyncState, User, InviteCode, etc.)
+│   └── schema.prisma          # Database models (CreatorAccount, Post, Media, SyncState)
 ├── src/
 │   ├── app/
-│   │   ├── (auth)/             # Protected routes (posts, gallery, search, admin)
-│   │   │   ├── admin/          # Admin dashboard (multi-account mgmt, discover, invite codes)
+│   │   ├── (auth)/             # Routes (posts, gallery, search, admin)
+│   │   │   ├── admin/          # Admin dashboard (multi-account mgmt)
 │   │   │   └── posts/          # Home feed with creator filter dropdown
 │   │   ├── api/
 │   │   │   ├── accounts/       # Creator account CRUD + discover followed
 │   │   │   ├── session/        # Per-account session_id management
 │   │   │   ├── sync/           # Manual sync (single + all accounts)
 │   │   │   └── cron/           # Vercel cron jobs (sync-patreon, refresh-hls)
-│   │   ├── login/              # Login page
-│   │   ├── layout.tsx          # Root layout
-│   │   └── page.tsx            # Landing page
+│   │   ├── layout.tsx          # Root layout with Navbar
+│   │   └── page.tsx            # Landing page → redirects to /posts
 │   ├── components/             # React components (Navbar, VideoPlayer, PostCard, CreatorFilter, etc.)
-│   ├── lib/                    # Core logic (auth.ts, prisma.ts, patreon.ts, hls.ts, invites.ts)
-│   └── middleware.ts           # Auth.js middleware (protects routes)
+│   ├── lib/                    # Core logic (prisma.ts, patreon.ts, hls.ts)
+│   └── globals.css
 ├── .env.example                # Environment variables template
 ├── vercel.json                 # Vercel config with cron jobs
 └── SETUP.md                    # This file
@@ -239,9 +171,9 @@ patron-hub/
 ## 🔐 Security Notes
 
 - **Never commit `.env`** — it's in `.gitignore`
-- **Rotate `AUTH_SECRET` and `CRON_SECRET`** periodically
+- **Rotate `CRON_SECRET`** periodically
 - **The Patreon `session_id` is stored in your database** — it gives full access to your Patreon account. Keep your database credentials secure.
-- **If you ever shared a GitHub personal access token publicly**, revoke it immediately at [GitHub → Settings → Tokens](https://github.com/settings/tokens) and generate a new one
+- **The site has no login/auth** — share the link only in trusted channels (e.g., private Discord). Anyone with the URL can access all content and admin controls.
 
 ---
 
@@ -252,8 +184,6 @@ patron-hub/
 | Framework | Next.js 16 (App Router) |
 | Language | TypeScript |
 | Database | PostgreSQL + Prisma ORM |
-| Auth | Auth.js v5 (magic links) |
-| Email | Nodemailer + SMTP |
 | Video | video.js + hls.js + Mux HLS/MP4 |
 | Styling | Tailwind CSS 4 |
 | Hosting | Vercel (with cron jobs) |

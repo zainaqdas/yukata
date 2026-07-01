@@ -1,14 +1,8 @@
-import { auth } from "@/lib/auth";
 import { submitHlsUrl } from "@/lib/hls";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const body = await request.json();
   const { postId, hlsManifestUrl, durationMinutes } = body;
 

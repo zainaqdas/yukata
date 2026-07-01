@@ -14,7 +14,7 @@
 
 ## What This Project Is
 
-A private, members-only content platform for a Patreon creator to share their Patreon content with paying members. Only invited members get access. Supports multiple Patreon creator accounts (both owned and followed), each with independent sync state.
+A content platform that syncs Patreon posts (including video) for sharing via a private link inside a premium Discord. **No auth system** — access is controlled by who has the link (shared only in trusted channels). Supports multiple Patreon creator accounts (owned + followed).
 
 ---
 
@@ -23,43 +23,37 @@ A private, members-only content platform for a Patreon creator to share their Pa
 ### 1. Multi-Account Patreon Sync (Cookie-Based)
 
 **Two types of CreatorAccount:**
-- **Owned** (`isOwned=true`) — has its own `session_id` cookie. The creator's own Patreon account.
-- **Followed** (`isOwned=false`, `parentAccountId` set) — uses the parent's session_id. Created via discovery.
+- **Owned** (`isOwned=true`) — has its own `session_id` cookie
+- **Followed** (`isOwned=false`, `parentAccountId` set) — uses the parent's session_id
 
-**Key functions:**
-- `resolveAuthAccount(accountId)` — walks up `parentAccountId` chain to find an owned account with a session
-- `discoverFollowedCampaigns(parentId)` — hits `/api/campaigns?filter[is_following]=true`, creates `CreatorAccount` records with `isOwned=false` + `parentAccountId`
-- `syncAccountPosts(accountId)` — works for both types; followed accounts use parent's session via `resolveAuthAccount`
-- `syncAllAccounts()` — iterates owned accounts (with session) + followed accounts (with campaign ID)
-- Engine: `src/lib/patreon.ts`
+**Key functions in `src/lib/patreon.ts`:**
+- `resolveAuthAccount(accountId)` — walks up chain to find owned account with session
+- `discoverFollowedCampaigns(parentId)` — `/api/campaigns?filter[is_following]=true`
+- `syncAccountPosts(accountId)` — works for both types
+- `syncAllAccounts()` — iterates all accounts
 
-### 2. Mux Video — Two Patreon Formats (HLS + MP4)
+### 2. Mux Video — Two Patreon Formats
 
-| Post Type | Embed HTML | Video Source | Format |
-|---|---|---|---|
-| `video` / `video_embed` | Yes | `embed.html` | Signed HLS .m3u8 |
-| `video_external_file` | No | `included[].attributes.display` | Signed HLS .m3u8 |
+| Post Type | Source Field | Format |
+|---|---|---|
+| `video` / `video_embed` | `embed.html` | Signed HLS .m3u8 |
+| `video_external_file` | `included[].attributes.display` | Signed HLS .m3u8 |
 
-**Critical discovery:** HLS URL lives in `attrs.display` (not `download_url` — that's a different Mux asset for downloading).
+**Extraction pipeline:** `display` → `mimetype` → `download_url`/`stream_url`/`urls` → embed HTML
+**Regex constants:** `MUX_HLS_RE`, `MUX_MP4_RE` (module-level)
+**JWT:** `parseJwtExpiry()` with 5-min buffer
 
-#### Extraction Pipeline
-1. `extractVideoFromIncluded()` — checks `attrs.display` first, then `mimetype`, then `download_url`/`stream_url`/`urls`
-2. `extractVideoFromEmbed()` — embed HTML regex fallback
-3. `storeVideoMedia()` — stores HLS in `hlsManifestUrl`, MP4 in `url`
-4. Returns `ExtractedVideo { url, isHls }`
+### 3. No Auth — Public Link Access
 
-#### JWT Token Handling
-- `MUX_HLS_RE` / `MUX_MP4_RE` — module-level signed URL regex constants
-- `parseJwtExpiry(token)` — `Buffer.from(payload, "base64url")`, 5-min buffer
-- `getVideoExpiry(url)` — parses `?token=`; falls back to 24h
-
-### 3. Auth.js v5 Magic Links + Invite Codes
-- Email magic links, invite-code gated
-- `signIn` callback claims invite codes automatically
-- Type augmentation adds `role` to Session/User
+- No login, no magic links, no invite codes, no user accounts
+- Anyone with the URL can access all content + admin
+- Share the link only in trusted channels (private Discord)
+- Removed: Auth.js, Nodemailer, middleware, User/InviteCode/Account/Session models
 
 ### 4. Prisma 5 + Vercel Cron
-- 9 models, Vercel cron: sync every 15 min, HLS check every hour
+
+- 4 models (CreatorAccount, Post, Media, SyncState)
+- Cron: sync every 15 min, HLS check every hour
 
 ---
 
@@ -67,7 +61,7 @@ A private, members-only content platform for a Patreon creator to share their Pa
 
 | Model | Key Fields |
 |---|---|
-| **CreatorAccount** | name, patreonSessionId, patreonCampaignId, lastSyncAt, cursor, status, errorLog, **isOwned** (default true), **parentAccountId** (self-relation FK) |
+| **CreatorAccount** | name, patreonSessionId, patreonCampaignId, lastSyncAt, cursor, status, errorLog, isOwned, parentAccountId (self-relation) |
 | **Post** | patreonId (@unique), title, type, content, embedHtml, thumbnailUrl, creatorAccountId (FK) |
 | **Media** | postId (FK), type (HLS_VIDEO/IMAGE/ATTACHMENT/EMBED), hlsManifestUrl, url, hlsExpiresAt |
 
@@ -77,17 +71,14 @@ A private, members-only content platform for a Patreon creator to share their Pa
 
 | File | Purpose |
 |---|---|
-| `src/lib/patreon.ts` | Multi-account sync engine. Cookie auth, pagination, Mux extraction, JWT parsing, account CRUD, followed-campaign discovery. |
-| `src/lib/auth.ts` | Auth.js v5 with Nodemailer, invite-code claiming, role augmentation |
+| `src/lib/patreon.ts` | Multi-account sync engine, cookie auth, Mux extraction, JWT parsing, account CRUD, discovery |
 | `src/lib/hls.ts` | HLS/MP4 URL storage, active URL lookup, expiry checking |
-| `src/components/CreatorFilter.tsx` | Client component: dropdown to filter /posts feed by creator, using useRouter/useSearchParams |
-| `src/components/VideoPlayer.tsx` | video.js player supporting HLS and direct MP4 |
-| `prisma/schema.prisma` | 9 models including CreatorAccount self-relation |
-| `src/app/(auth)/admin/` | Admin dashboard with owned/followed badges, per-account session/sync, discover followed, add/delete |
-| `src/app/api/accounts/route.ts` | Creator account CRUD |
-| `src/app/api/accounts/discover/route.ts` | Discover followed campaigns from Patreon |
-| `src/app/api/session/route.ts` | Per-account session_id management |
-| `src/app/api/sync/route.ts` | Single-account or sync-all |
+| `src/components/Navbar.tsx` | Navigation bar with Posts, Gallery, Search, Admin links |
+| `src/components/CreatorFilter.tsx` | Client dropdown to filter /posts feed by creator |
+| `src/components/VideoPlayer.tsx` | video.js player (HLS + MP4) |
+| `prisma/schema.prisma` | 4 models: CreatorAccount, Post, Media, SyncState |
+| `src/app/(auth)/admin/` | Admin dashboard: owned/followed badges, per-account session/sync, discover, add/delete |
+| `src/app/layout.tsx` | Root layout with Navbar (no Providers/SessionProvider) |
 
 ---
 
@@ -95,12 +86,7 @@ A private, members-only content platform for a Patreon creator to share their Pa
 
 ```
 DATABASE_URL          # PostgreSQL
-AUTH_SECRET           # openssl rand -hex 32
-AUTH_URL              # https://your-app.vercel.app
-EMAIL_SERVER          # SMTP for magic links
-EMAIL_FROM            # noreply@yourdomain.com
 CRON_SECRET           # openssl rand -hex 32
-PATREON_CAMPAIGN_ID   # (optional) default campaign
 PATREON_CF_BM_COOKIE  # (optional) Cloudflare bypass
 ```
 
@@ -108,78 +94,52 @@ PATREON_CF_BM_COOKIE  # (optional) Cloudflare bypass
 
 ## API Routes
 
-| Endpoint | Auth | Purpose |
-|---|---|---|
-| `GET/POST /api/auth/*` | Public | Magic-link auth |
-| `GET /api/posts` | Member | Post list, optional `creatorAccountId` filter |
-| `GET /api/posts/[id]` | Member | Post detail + active video URL |
-| `GET /api/invites/validate` | Public | Validate & claim invite codes |
-| `GET/POST/DELETE /api/invites` | Admin | CRUD invite codes |
-| `POST /api/hls` | Admin | Submit/refresh video URL |
-| `GET/POST /api/sync` | Admin | Sync single account or all |
-| `GET/POST/DELETE /api/session` | Admin | Per-account session_id |
-| `GET/POST/DELETE /api/accounts` | Admin | Creator account CRUD |
-| `POST /api/accounts/discover` | Admin | Discover followed creators |
-| `GET /api/cron/sync-patreon` | CRON_SECRET | Auto sync all accounts |
-| `GET /api/cron/refresh-hls` | CRON_SECRET | HLS expiry check |
-
----
-
-## Mux JWT Token Format
-
-```
-https://stream.mux.com/{PLAYBACK_ID}.m3u8?token=eyJhbGci...{payload}...{sig}
-```
-
-JWT payload: `{ sub: PLAYBACK_ID, exp: unix_ts, aud: "v", playback_restriction_id: "..." }`
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/posts` | Post list, optional `creatorAccountId` filter |
+| `GET /api/posts/[id]` | Post detail + active video URL |
+| `POST /api/hls` | Submit/refresh video URL |
+| `GET/POST /api/sync` | Sync single account or all |
+| `GET/POST/DELETE /api/session` | Per-account session_id management |
+| `GET/POST/DELETE /api/accounts` | Creator account CRUD |
+| `POST /api/accounts/discover` | Discover followed creators |
+| `GET /api/cron/sync-patreon` | Auto sync all accounts (CRON_SECRET) |
+| `GET /api/cron/refresh-hls` | HLS expiry check (CRON_SECRET) |
 
 ---
 
 ## What's Done
 
-- [x] Next.js 14 + TypeScript + Tailwind
-- [x] Prisma 5 with 9 models (CreatorAccount self-relation)
-- [x] Auth.js v5 magic links + invite codes
+- [x] Next.js 16 + TypeScript + Tailwind
 - [x] Multi-account cookie-based Patreon sync (owned + followed)
 - [x] Followed creator discovery via Patreon API
+- [x] Both HLS (.m3u8 from display/embed) and MP4 video formats
 - [x] Mux JWT token parsing with accurate expiry
-- [x] Both HLS (.m3u8 from display/embed) and MP4 (.mp4 from download_url) video formats
-- [x] Admin dashboard: account CRUD, per-account session & sync, discover followed, invite manager
-- [x] Frontend: posts feed with creator names, creator filter dropdown, gallery, search, video player (HLS + MP4)
+- [x] Admin dashboard: account CRUD, session, sync, discover, delete
+- [x] Frontend: posts feed with creator names + filter dropdown, gallery, search, video player
 - [x] All API routes + Vercel cron
-- [x] SETUP.md, README.md, .env.example, vercel.json
-- [x] Tested against 7 real Patreon posts — 7/7 HLS extraction from display field
-- [x] Typechecks clean, builds clean, pushed to GitHub
-
-## What's NOT Done
-
-- [ ] Deployment — follow SETUP.md
-- [ ] Database — needs `npx prisma migrate deploy`
-- [ ] First invite code — seed manually in DB
-- [ ] Automated tests
-
-- [ ] Image optimization (Next.js Image)
-- [ ] Rate limiting
-- [ ] Member management UI
+- [x] SETUP.md, .env.example, vercel.json
+- [x] 7/7 real Patreon posts verified — HLS extraction from display field
+- [x] Typechecks clean, builds clean
+- [x] **Auth removed** — no login, no invite codes, public link access
 
 ---
 
 ## Git History (latest first)
 
-1. `feat: add creator filter dropdown to /posts feed`
-2. `feat: add home feed with creator names on post cards`
-3. `feat: add followed creator discovery and sync`
-3. `refactor: extract Mux HLS/MP4 regexes to module-level constants`
-3. `fix: extract HLS URLs from media display field`
-4. `fix: support both MP4 and HLS video formats from Mux`
-5. `fix: preserve Mux JWT token in HLS URLs`
-6. `feat: multi-creator-account support`
-7. `docs: add README.md and AI context file`
-8. `docs: add deployment guide, vercel config, and env template`
-9. `feat: cookie-based Patreon sync with auto HLS extraction`
-10. `Initial commit`
+1. `docs: update SETUP.md for multi-account sync`
+2. `docs: update context.md with creator filter feature`
+3. `feat: add creator filter dropdown to /posts feed`
+4. `feat: add home feed with creator names on post cards`
+5. `feat: add followed creator discovery and sync`
+6. `refactor: extract Mux HLS/MP4 regexes`
+7. `fix: extract HLS URLs from media display field`
+8. `fix: support both MP4 and HLS video formats`
+9. `feat: multi-creator-account support`
+10. `feat: cookie-based Patreon sync`
+11. `Initial commit`
 
 ---
 
 **Last updated:** July 1, 2026
-**Session ended with:** Creator filter dropdown on /posts feed. Home feed shows creator names on post cards. Followed creator discovery + sync working. All Patreon video formats (HLS from display, MP4 from download_url) handled correctly. 12 commits total.
+**Session ended with:** Auth system removed — no login, invite codes, or user accounts. Site is accessible to anyone with the link. All API auth checks stripped. Simplified to 4 Prisma models. SETUP.md rewrited for public link access.

@@ -1,25 +1,14 @@
-import { auth } from "@/lib/auth";
 import { syncAccountPosts, syncAllAccounts, listCreatorAccounts } from "@/lib/patreon";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const accounts = await listCreatorAccounts();
   return NextResponse.json(accounts);
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
     const body = await request.json().catch(() => ({}));
     const accountId = body.accountId as string | undefined;

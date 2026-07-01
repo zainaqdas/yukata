@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { format } from "date-fns";
 import Link from "next/link";
-import { auth } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import HlsSubmitForm from "./HlsSubmitForm";
 
@@ -13,7 +12,6 @@ export default async function PostDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await auth();
   const { id } = await params;
 
   const post = await prisma.post.findUnique({
@@ -43,7 +41,6 @@ export default async function PostDetailPage({
     }
   }
 
-  const isAdmin = session?.user?.role === "ADMIN";
   const hasVideo = !!(hlsUrl || directUrl);
 
   return (
@@ -89,7 +86,7 @@ export default async function PostDetailPage({
             poster={post.thumbnailUrl || undefined}
             className="aspect-video"
           />
-          {!hasVideo && isAdmin && (
+          {!hasVideo && (
             <div className="mt-3 p-4 bg-amber-950/20 border border-amber-900/30 rounded-xl">
               <p className="text-sm text-amber-400 mb-2">
                 Video URL not set or expired. Submit a fresh stream URL:
