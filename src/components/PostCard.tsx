@@ -10,6 +10,7 @@ interface PostCardProps {
   type: PostType;
   thumbnailUrl: string | null;
   publishedAt: string;
+  creatorName?: string | null;
   media: Array<{ id: string; type: string; thumbnailUrl: string | null; duration: number | null }>;
 }
 
@@ -22,7 +23,7 @@ const typeIcons: Record<string, string> = {
   FILE: "📁",
 };
 
-export function PostCard({ id, title, type, thumbnailUrl, publishedAt, media }: PostCardProps) {
+export function PostCard({ id, title, type, thumbnailUrl, publishedAt, creatorName, media }: PostCardProps) {
   const firstMedia = media?.[0];
   const displayThumb = thumbnailUrl || firstMedia?.thumbnailUrl;
 
@@ -62,9 +63,16 @@ export function PostCard({ id, title, type, thumbnailUrl, publishedAt, media }: 
         <h3 className="font-medium text-zinc-100 group-hover:text-violet-300 transition-colors line-clamp-2">
           {title}
         </h3>
-        <p className="text-sm text-zinc-500 mt-1.5">
-          {format(new Date(publishedAt), "MMM d, yyyy")}
-        </p>
+        <div className="flex items-center gap-2 mt-1.5">
+          {creatorName && (
+            <span className="text-xs text-violet-400 bg-violet-950/40 px-2 py-0.5 rounded-md truncate max-w-[140px]">
+              {creatorName}
+            </span>
+          )}
+          <span className="text-xs text-zinc-500">
+            {format(new Date(publishedAt), "MMM d, yyyy")}
+          </span>
+        </div>
       </div>
     </Link>
   );

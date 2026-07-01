@@ -7,6 +7,7 @@ interface PostGridProps {
     type: string;
     thumbnailUrl: string | null;
     publishedAt: Date;
+    creatorAccount?: { id: string; name: string } | null;
     media: Array<{
       id: string;
       type: string;
@@ -28,6 +29,7 @@ export function PostGrid({ posts }: PostGridProps) {
           type={post.type as any}
           thumbnailUrl={post.thumbnailUrl}
           publishedAt={post.publishedAt.toISOString()}
+          creatorName={post.creatorAccount?.name}
           media={post.media}
         />
       ))}

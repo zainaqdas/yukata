@@ -33,6 +33,7 @@ export default async function SearchPage({
       skip,
       take: limit,
       include: {
+        creatorAccount: { select: { id: true, name: true } },
         media: {
           select: {
             id: true,

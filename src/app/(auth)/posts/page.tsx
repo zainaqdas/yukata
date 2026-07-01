@@ -26,6 +26,7 @@ export default async function PostsPage({
       skip,
       take: limit,
       include: {
+        creatorAccount: { select: { id: true, name: true } },
         media: {
           select: {
             id: true,
