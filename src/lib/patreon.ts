@@ -45,6 +45,11 @@ interface PatreonResponse {
   meta?: { pagination?: { cursors?: { next?: string }; total?: number } };
 }
 
+interface ExtractedVideo {
+  url: string;
+  isHls: boolean; // true = .m3u8, false = .mp4 (direct)
+}
+
 // ─── Account CRUD ─────────────────────────────────────
 
 export async function listCreatorAccounts() {
@@ -57,11 +62,7 @@ export async function getAccount(accountId: string) {
 
 export async function createAccount(name: string, campaignId?: string) {
   return prisma.creatorAccount.create({
-    data: {
-      name,
-      patreonCampaignId: campaignId || null,
-      status: "idle",
-    },
+    data: { name, patreonCampaignId: campaignId || null, status: "idle" },
   });
 }
 
@@ -86,9 +87,7 @@ function buildCookieHeader(sessionId: string): string {
 async function patreonCookieFetch(accountId: string, path: string): Promise<PatreonResponse> {
   const sessionId = await getSessionCookie(accountId);
   if (!sessionId) {
-    throw new Error(
-      `No Patreon session_id configured for account. Add it in the admin dashboard.`
-    );
+    throw new Error("No Patreon session_id configured for account. Add it in the admin dashboard.");
   }
 
   const url = path.startsWith("http") ? path : `${PATREON_BASE}${path}`;
@@ -148,20 +147,15 @@ function mapPostType(patreonType: string | undefined): string {
   }
 }
 
-// ─── HLS URL Extraction ───────────────────────────────
+// ─── JWT Expiry Parsing ───────────────────────────────
 
-/**
- * Decode a JWT payload (no verification) to extract the `exp` claim.
- * Returns the expiry date, or null if not found / invalid.
- */
 function parseJwtExpiry(token: string): Date | null {
   try {
     const parts = token.split(".");
     if (parts.length < 2) return null;
     const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8"));
     if (payload.exp && typeof payload.exp === "number") {
-      // exp is in seconds; give a 5-min buffer so we refresh before actual expiry
-      return new Date((payload.exp - 300) * 1000);
+      return new Date((payload.exp - 300) * 1000); // 5-min buffer
     }
     return null;
   } catch {
@@ -169,66 +163,69 @@ function parseJwtExpiry(token: string): Date | null {
   }
 }
 
-/**
- * If the HLS URL has a JWT `?token=` param, parse it to get the real
- * expiry time. Otherwise fall back to a default duration.
- */
-function getHlsExpiry(hlsUrl: string): Date {
+function getVideoExpiry(url: string): Date {
   try {
-    const url = new URL(hlsUrl);
-    const token = url.searchParams.get("token");
+    const parsed = new URL(url);
+    const token = parsed.searchParams.get("token");
     if (token) {
       const jwtExpiry = parseJwtExpiry(token);
       if (jwtExpiry) return jwtExpiry;
     }
-  } catch {
-    // not a valid URL — use default
-  }
-  // Fallback: 24 hours from now (Mux tokens typically last 12-24h)
+  } catch { /* not a valid URL */ }
   return new Date(Date.now() + 24 * 60 * 60 * 1000);
 }
 
-function extractHlsFromEmbed(embedHtml: string | null): string | null {
+// ─── Video URL Extraction (HLS + MP4) ─────────────────
+
+function extractVideoFromEmbed(embedHtml: string | null): ExtractedVideo | null {
   if (!embedHtml) return null;
 
-  // Pattern 1: Full signed Mux URL with ?token= JWT
-  // Matches: https://stream.mux.com/{ID}.m3u8?token=eyJ...
-  const signedMatch = embedHtml.match(
+  // Try signed HLS URL: stream.mux.com/{ID}.m3u8?token=...
+  const signedHls = embedHtml.match(
     /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\.m3u8\?token=[^"'\s<>]+/i
   );
-  if (signedMatch) return signedMatch[0];
+  if (signedHls) return { url: signedHls[0], isHls: true };
 
-  // Pattern 2: Any .m3u8 URL (signed or unsigned)
+  // Try signed MP4 URL: stream.mux.com/{ID}/{quality}.mp4?token=...
+  const signedMp4 = embedHtml.match(
+    /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\/[^"'\s<>]*\.mp4\?token=[^"'\s<>]+/i
+  );
+  if (signedMp4) return { url: signedMp4[0], isHls: false };
+
+  // Any .m3u8 URL
   const m3u8Match = embedHtml.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/i);
-  if (m3u8Match) return m3u8Match[0];
+  if (m3u8Match) return { url: m3u8Match[0], isHls: true };
 
   return null;
 }
 
-function extractHlsFromIncluded(included: PatreonIncluded[]): string | null {
+function extractVideoFromIncluded(included: PatreonIncluded[]): ExtractedVideo | null {
   for (const item of included) {
     const attrs = item.attributes as Record<string, unknown>;
 
-    // download_url — often contains the full signed Mux URL
-    if (attrs.download_url && typeof attrs.download_url === "string") {
-      const url = attrs.download_url;
-      if (url.includes(".m3u8") || url.includes("mux.com")) return url;
-    }
+    const dl = typeof attrs.download_url === "string" ? attrs.download_url : "";
+    const stream = typeof attrs.stream_url === "string" ? attrs.stream_url : "";
 
-    // stream_url — direct stream link if exposed
-    if (attrs.stream_url && typeof attrs.stream_url === "string") {
-      return attrs.stream_url;
-    }
-
-    // urls object — check all keys for stream references
+    const candidates = [dl, stream];
     const urls = attrs.urls as Record<string, string> | undefined;
     if (urls) {
       for (const key of Object.keys(urls)) {
         const val = urls[key];
-        if (val?.includes(".m3u8") || val?.includes("mux.com")) {
-          return val;
+        // Only add actual stream URLs, not image.mux.com thumbnails
+        if (val && (val.includes(".m3u8") || val.includes(".mp4") || val.includes("stream.mux.com"))) {
+          candidates.push(val);
         }
       }
+    }
+
+    for (const url of candidates) {
+      if (!url || !url.includes("mux.com")) continue;
+      // HLS (.m3u8) takes priority
+      if (url.includes(".m3u8")) return { url, isHls: true };
+      // Direct MP4 from Mux
+      if (url.includes(".mp4")) return { url, isHls: false };
+      // Any other Mux URL — assume HLS
+      return { url, isHls: true };
     }
   }
   return null;
@@ -245,8 +242,8 @@ async function fetchPostDetails(accountId: string, postId: string): Promise<Patr
 
 async function fetchCampaignPosts(accountId: string, campaignId: string, cursor?: string): Promise<PatreonResponse> {
   const params = new URLSearchParams({
-    "include": "media,attachments,access_rules,campaign,user,user_defined_tags",
-    "sort": "-published_at",
+    include: "media,attachments,access_rules,campaign,user,user_defined_tags",
+    sort: "-published_at",
     "filter[campaign_id]": campaignId,
     "filter[contains_exclusive_posts]": "true",
     "filter[is_draft]": "false",
@@ -262,28 +259,51 @@ async function fetchCampaignPosts(accountId: string, campaignId: string, cursor?
 // ─── Find Campaign ID ─────────────────────────────────
 
 async function findCampaignId(accountId: string): Promise<string> {
-  // Check account-level override first
   const account = await prisma.creatorAccount.findUnique({ where: { id: accountId } });
   if (account?.patreonCampaignId) return account.patreonCampaignId;
 
-  // Check env var
   const envCampaignId = process.env.PATREON_CAMPAIGN_ID;
   if (envCampaignId) return envCampaignId;
 
-  // Try to discover from Patreon API
   try {
     const data = await patreonCookieFetch(
       accountId,
       "/api/current_user/campaigns?include=null&fields[campaign]=id,creation_name"
     );
     if (data.data?.[0]) return data.data[0].id;
-  } catch {
-    // Fallback
-  }
+  } catch { /* fallback */ }
 
-  throw new Error(
-    `Could not determine campaign ID for account. Set a campaign_id on the account or PATREON_CAMPAIGN_ID in .env.`
-  );
+  throw new Error("Could not determine campaign ID. Set a campaign_id on the account or PATREON_CAMPAIGN_ID in .env.");
+}
+
+// ─── Store video media ────────────────────────────────
+
+async function storeVideoMedia(
+  postId: string,
+  video: ExtractedVideo,
+  thumbnailUrl: string | null
+): Promise<void> {
+  const expiry = getVideoExpiry(video.url);
+
+  const existing = await prisma.media.findFirst({
+    where: { postId, type: "HLS_VIDEO" },
+  });
+
+  const data = {
+    hlsManifestUrl: video.isHls ? video.url : null,
+    url: video.isHls ? null : video.url,
+    hlsExpiresAt: expiry,
+    hlsRefreshedAt: new Date(),
+    ...(!existing ? { thumbnailUrl } : {}),
+  };
+
+  if (existing) {
+    await prisma.media.update({ where: { id: existing.id }, data });
+  } else {
+    await prisma.media.create({
+      data: { postId, type: "HLS_VIDEO", ...data },
+    });
+  }
 }
 
 // ─── Main Sync Function ───────────────────────────────
@@ -333,9 +353,9 @@ export async function syncAccountPosts(accountId: string): Promise<{
         const thumbnailUrl = attrs.image?.large_url || attrs.image?.url || null;
         const embedHtml = attrs.embed?.html || null;
 
-        let hlsUrl: string | null = null;
+        let video: ExtractedVideo | null = null;
         if (postType === "VIDEO") {
-          hlsUrl = extractHlsFromIncluded(included) || extractHlsFromEmbed(embedHtml);
+          video = extractVideoFromIncluded(included) || extractVideoFromEmbed(embedHtml);
         }
 
         let postRecord = await prisma.post.findUnique({ where: { patreonId: post.id } });
@@ -356,51 +376,24 @@ export async function syncAccountPosts(accountId: string): Promise<{
           });
           syncedCount++;
         } else if (!postRecord.creatorAccountId) {
-          // Backfill: associate orphaned posts with this account
           await prisma.post.update({
             where: { id: postRecord.id },
             data: { creatorAccountId: accountId },
           });
         }
 
-        if (postType === "VIDEO" && !hlsUrl) {
+        // For video posts without a URL yet, fetch individual post details
+        if (postType === "VIDEO" && !video) {
           try {
             await new Promise((r) => setTimeout(r, 200));
             const details = await fetchPostDetails(accountId, post.id);
             const detailEmbed = details.data?.[0]?.attributes?.embed?.html || null;
-            hlsUrl = extractHlsFromIncluded(details.included || []) || extractHlsFromEmbed(detailEmbed);
-          } catch {
-            // skip
-          }
+            video = extractVideoFromIncluded(details.included || []) || extractVideoFromEmbed(detailEmbed);
+          } catch { /* skip */ }
         }
 
-        if (hlsUrl && postType === "VIDEO" && postRecord) {
-          const expiry = getHlsExpiry(hlsUrl);
-          const existingMedia = await prisma.media.findFirst({
-            where: { postId: postRecord.id, type: "HLS_VIDEO" },
-          });
-
-          if (existingMedia) {
-            await prisma.media.update({
-              where: { id: existingMedia.id },
-              data: {
-                hlsManifestUrl: hlsUrl,
-                hlsExpiresAt: expiry,
-                hlsRefreshedAt: new Date(),
-              },
-            });
-          } else {
-            await prisma.media.create({
-              data: {
-                postId: postRecord.id,
-                type: "HLS_VIDEO",
-                hlsManifestUrl: hlsUrl,
-                hlsExpiresAt: expiry,
-                hlsRefreshedAt: new Date(),
-                thumbnailUrl,
-              },
-            });
-          }
+        if (video && postType === "VIDEO" && postRecord) {
+          await storeVideoMedia(postRecord.id, video, thumbnailUrl);
           hlsExtracted++;
         }
       }
@@ -443,8 +436,7 @@ export async function syncAllAccounts(): Promise<Awaited<ReturnType<typeof syncA
 
   for (const account of accounts) {
     try {
-      const result = await syncAccountPosts(account.id);
-      results.push(result);
+      results.push(await syncAccountPosts(account.id));
     } catch (error: any) {
       results.push({
         accountId: account.id,
@@ -468,9 +460,7 @@ export async function savePatreonSessionId(accountId: string, sessionId: string)
     where: { id: accountId },
     data: {
       patreonSessionId: sessionId || null,
-      sessionExpiresAt: sessionId
-        ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-        : null,
+      sessionExpiresAt: sessionId ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null,
       status: "idle",
       errorLog: null,
     },
@@ -480,8 +470,6 @@ export async function savePatreonSessionId(accountId: string, sessionId: string)
 export async function getSyncStatus(accountId: string) {
   return prisma.creatorAccount.findUnique({ where: { id: accountId } });
 }
-
-// ─── Legacy compat (for old code that calls these) ────
 
 export async function getGlobalSyncStatus() {
   return prisma.syncState.findUnique({ where: { id: "main" } });

@@ -5,17 +5,24 @@ import videojs from "video.js";
 import "video.js/dist/video-js.css";
 
 interface VideoPlayerProps {
-  hlsUrl: string;
+  /** HLS manifest URL (.m3u8) — played via hls.js */
+  hlsUrl?: string;
+  /** Direct video URL (.mp4, .webm) — played natively */
+  directUrl?: string;
   poster?: string;
   className?: string;
 }
 
-export function VideoPlayer({ hlsUrl, poster, className = "" }: VideoPlayerProps) {
+export function VideoPlayer({ hlsUrl, directUrl, poster, className = "" }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<any>(null);
 
+  // Determine the video source
+  const videoUrl = hlsUrl || directUrl || "";
+  const isHls = !!hlsUrl;
+
   useEffect(() => {
-    if (!videoRef.current || !hlsUrl) return;
+    if (!videoRef.current || !videoUrl) return;
 
     const player = videojs(videoRef.current, {
       controls: true,
@@ -25,7 +32,7 @@ export function VideoPlayer({ hlsUrl, poster, className = "" }: VideoPlayerProps
       playbackRates: [0.5, 1, 1.25, 1.5, 2],
       html5: {
         hls: {
-          overrideNative: true,
+          overrideNative: !isHls ? false : true,
         },
       },
     });
@@ -33,10 +40,17 @@ export function VideoPlayer({ hlsUrl, poster, className = "" }: VideoPlayerProps
     playerRef.current = player;
 
     player.ready(() => {
-      player.src({
-        src: hlsUrl,
-        type: "application/x-mpegURL",
-      });
+      if (isHls) {
+        player.src({
+          src: videoUrl,
+          type: "application/x-mpegURL",
+        });
+      } else {
+        player.src({
+          src: videoUrl,
+          type: "video/mp4",
+        });
+      }
     });
 
     return () => {
@@ -44,9 +58,9 @@ export function VideoPlayer({ hlsUrl, poster, className = "" }: VideoPlayerProps
         playerRef.current.dispose();
       }
     };
-  }, [hlsUrl, poster]);
+  }, [videoUrl, isHls, poster]);
 
-  if (!hlsUrl) {
+  if (!videoUrl) {
     return (
       <div className={`flex items-center justify-center bg-zinc-900 rounded-xl border border-zinc-800 ${className}`}>
         <div className="text-center p-12">

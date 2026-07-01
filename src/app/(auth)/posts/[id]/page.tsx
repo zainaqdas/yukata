@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { getActiveHlsUrl } from "@/lib/hls";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { format } from "date-fns";
 import Link from "next/link";
@@ -24,18 +23,28 @@ export default async function PostDetailPage({
 
   if (!post || !post.isPublished) notFound();
 
-  // Get active HLS URL for video posts
+  // Get active video URL for video posts
   let hlsUrl: string | null = null;
-  let hlsExpiresAt: Date | null = null;
+  let directUrl: string | null = null;
+  let videoExpiresAt: Date | null = null;
+
   if (post.type === "VIDEO") {
-    const activeHls = await getActiveHlsUrl(id);
-    if (activeHls) {
-      hlsUrl = activeHls.hlsManifestUrl;
-      hlsExpiresAt = activeHls.hlsExpiresAt;
+    const activeMedia = post.media.find(
+      (m) =>
+        m.type === "HLS_VIDEO" &&
+        (m.hlsManifestUrl || m.url) &&
+        m.hlsExpiresAt &&
+        m.hlsExpiresAt > new Date()
+    );
+    if (activeMedia) {
+      hlsUrl = activeMedia.hlsManifestUrl || null;
+      directUrl = activeMedia.url || null;
+      videoExpiresAt = activeMedia.hlsExpiresAt;
     }
   }
 
   const isAdmin = session?.user?.role === "ADMIN";
+  const hasVideo = !!(hlsUrl || directUrl);
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -75,21 +84,22 @@ export default async function PostDetailPage({
       {post.type === "VIDEO" && (
         <div className="mb-8">
           <VideoPlayer
-            hlsUrl={hlsUrl || ""}
+            hlsUrl={hlsUrl || undefined}
+            directUrl={directUrl || undefined}
             poster={post.thumbnailUrl || undefined}
             className="aspect-video"
           />
-          {!hlsUrl && isAdmin && (
+          {!hasVideo && isAdmin && (
             <div className="mt-3 p-4 bg-amber-950/20 border border-amber-900/30 rounded-xl">
               <p className="text-sm text-amber-400 mb-2">
-                HLS stream URL not set or expired. Submit a fresh HLS URL:
+                Video URL not set or expired. Submit a fresh stream URL:
               </p>
               <HlsSubmitForm postId={post.id} />
             </div>
           )}
-          {hlsExpiresAt && (
+          {videoExpiresAt && (
             <p className="text-xs text-zinc-600 mt-2">
-              Stream expires: {format(hlsExpiresAt, "MMM d, h:mm a")}
+              Stream expires: {format(videoExpiresAt, "MMM d, h:mm a")}
             </p>
           )}
         </div>
