@@ -80,6 +80,7 @@ A private, members-only content platform for a Patreon creator to share their Pa
 | `src/lib/patreon.ts` | Multi-account sync engine. Cookie auth, pagination, Mux extraction, JWT parsing, account CRUD, followed-campaign discovery. |
 | `src/lib/auth.ts` | Auth.js v5 with Nodemailer, invite-code claiming, role augmentation |
 | `src/lib/hls.ts` | HLS/MP4 URL storage, active URL lookup, expiry checking |
+| `src/components/CreatorFilter.tsx` | Client component: dropdown to filter /posts feed by creator, using useRouter/useSearchParams |
 | `src/components/VideoPlayer.tsx` | video.js player supporting HLS and direct MP4 |
 | `prisma/schema.prisma` | 9 models including CreatorAccount self-relation |
 | `src/app/(auth)/admin/` | Admin dashboard with owned/followed badges, per-account session/sync, discover followed, add/delete |
@@ -144,7 +145,7 @@ JWT payload: `{ sub: PLAYBACK_ID, exp: unix_ts, aud: "v", playback_restriction_i
 - [x] Mux JWT token parsing with accurate expiry
 - [x] Both HLS (.m3u8 from display/embed) and MP4 (.mp4 from download_url) video formats
 - [x] Admin dashboard: account CRUD, per-account session & sync, discover followed, invite manager
-- [x] Frontend: posts feed with creator names, gallery, search, video player (HLS + MP4)
+- [x] Frontend: posts feed with creator names, creator filter dropdown, gallery, search, video player (HLS + MP4)
 - [x] All API routes + Vercel cron
 - [x] SETUP.md, README.md, .env.example, vercel.json
 - [x] Tested against 7 real Patreon posts — 7/7 HLS extraction from display field
@@ -156,7 +157,7 @@ JWT payload: `{ sub: PLAYBACK_ID, exp: unix_ts, aud: "v", playback_restriction_i
 - [ ] Database — needs `npx prisma migrate deploy`
 - [ ] First invite code — seed manually in DB
 - [ ] Automated tests
-- [ ] Account filter on /posts and /gallery
+
 - [ ] Image optimization (Next.js Image)
 - [ ] Rate limiting
 - [ ] Member management UI
@@ -165,8 +166,9 @@ JWT payload: `{ sub: PLAYBACK_ID, exp: unix_ts, aud: "v", playback_restriction_i
 
 ## Git History (latest first)
 
-1. `feat: add home feed with creator names on post cards`
-2. `feat: add followed creator discovery and sync`
+1. `feat: add creator filter dropdown to /posts feed`
+2. `feat: add home feed with creator names on post cards`
+3. `feat: add followed creator discovery and sync`
 3. `refactor: extract Mux HLS/MP4 regexes to module-level constants`
 3. `fix: extract HLS URLs from media display field`
 4. `fix: support both MP4 and HLS video formats from Mux`
@@ -180,4 +182,4 @@ JWT payload: `{ sub: PLAYBACK_ID, exp: unix_ts, aud: "v", playback_restriction_i
 ---
 
 **Last updated:** July 1, 2026
-**Session ended with:** Home feed shows creator names on post cards. Followed creator discovery + sync working. All Patreon video formats (HLS from display, MP4 from download_url) handled correctly. 11 commits total.
+**Session ended with:** Creator filter dropdown on /posts feed. Home feed shows creator names on post cards. Followed creator discovery + sync working. All Patreon video formats (HLS from display, MP4 from download_url) handled correctly. 12 commits total.
