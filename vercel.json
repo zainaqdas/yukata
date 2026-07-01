@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-patreon",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/refresh-hls",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
