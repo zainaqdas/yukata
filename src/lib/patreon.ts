@@ -177,19 +177,20 @@ function getVideoExpiry(url: string): Date {
 
 // ─── Video URL Extraction (HLS + MP4) ─────────────────
 
+// Signed Mux HLS URL: stream.mux.com/{ID}.m3u8?token=eyJ...
+const MUX_HLS_RE = /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\.m3u8\?token=[^"'\s<>]+/i;
+// Signed Mux MP4 URL: stream.mux.com/{ID}/{quality}.mp4?token=eyJ...
+const MUX_MP4_RE = /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\/[^"'\s<>]*\.mp4\?token=[^"'\s<>]+/i;
+
 function extractVideoFromEmbed(embedHtml: string | null): ExtractedVideo | null {
   if (!embedHtml) return null;
 
-  // Try signed HLS URL: stream.mux.com/{ID}.m3u8?token=...
-  const signedHls = embedHtml.match(
-    /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\.m3u8\?token=[^"'\s<>]+/i
-  );
+  // Try signed HLS URL
+  const signedHls = embedHtml.match(MUX_HLS_RE);
   if (signedHls) return { url: signedHls[0], isHls: true };
 
-  // Try signed MP4 URL: stream.mux.com/{ID}/{quality}.mp4?token=...
-  const signedMp4 = embedHtml.match(
-    /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\/[^"'\s<>]*\.mp4\?token=[^"'\s<>]+/i
-  );
+  // Try signed MP4 URL
+  const signedMp4 = embedHtml.match(MUX_MP4_RE);
   if (signedMp4) return { url: signedMp4[0], isHls: false };
 
   // Any .m3u8 URL
@@ -209,14 +210,10 @@ function extractVideoFromIncluded(included: PatreonIncluded[]): ExtractedVideo |
     if (display) {
       const displayStr = typeof display === "string" ? display : JSON.stringify(display);
       // Check for signed HLS URL in display
-      const hlsMatch = displayStr.match(
-        /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\.m3u8\?token=[^"'\s<>]+/i
-      );
+      const hlsMatch = displayStr.match(MUX_HLS_RE);
       if (hlsMatch) return { url: hlsMatch[0], isHls: true };
       // Check for signed MP4 URL in display
-      const mp4Match = displayStr.match(
-        /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\/[^"'\s<>]*\.mp4\?token=[^"'\s<>]+/i
-      );
+      const mp4Match = displayStr.match(MUX_MP4_RE);
       if (mp4Match) return { url: mp4Match[0], isHls: false };
     }
 
