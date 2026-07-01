@@ -60,6 +60,8 @@ This is how the app imports your posts — it uses the same cookie your browser 
 | `DATABASE_URL` | Your PostgreSQL connection string from Step 1 |
 | `CRON_SECRET` | Run `openssl rand -hex 32`, paste result |
 | `PATREON_CF_BM_COOKIE` | (optional) Cloudflare cookie from Step 2 |
+| `PATREON_CAMPAIGN_ID` | (optional) Explicit campaign ID if auto-detection fails |
+| `HLS_REFRESH_INTERVAL_MINUTES` | (optional) Minutes before HLS expiry to trigger refresh (default: 30) |
 
 5. Click **Deploy** 🚀
 
@@ -126,6 +128,8 @@ Manual sync from `/admin`:
 
 Mux HLS URLs expire based on JWT tokens (~24 hours). The `hlsExpiresAt` field tracks this. Re-sync to refresh tokens.
 
+The `HLS_REFRESH_INTERVAL_MINUTES` env var (default: 30) controls how far in advance the cron job flags HLS URLs as expiring — lowering it reduces false positives, raising it gives more buffer.
+
 ---
 
 ## 🔧 Troubleshooting
@@ -136,6 +140,8 @@ Mux HLS URLs expire based on JWT tokens (~24 hours). The `hlsExpiresAt` field tr
 | "Cloudflare CAPTCHA" | Add `__cf_bm` cookie or set `PATREON_CF_BM_COOKIE` env var. |
 | "Build fails" | Check Vercel build logs. Make sure `DATABASE_URL` is set and `prisma generate` succeeds. |
 | "Database migration fails" | Make sure your IP is allowed in the database provider's firewall. |
+| "Can't find campaign ID" | Set `PATREON_CAMPAIGN_ID` in your env vars or add a campaign ID when creating the account. |
+| "HLS refresh runs too often" | Increase `HLS_REFRESH_INTERVAL_MINUTES` (default: 30). |
 | "Videos not playing" | The Mux HLS URL may have expired. Go to `/admin` → **Sync** on the relevant account. |
 
 ---

@@ -155,7 +155,7 @@ async function patreonCookieFetch(accountId: string, path: string): Promise<Patr
 
 // ─── Post Type Mapping ────────────────────────────────
 
-function mapPostType(patreonType: string | undefined): PostTypeEnum {
+export function mapPostType(patreonType: string | undefined): PostTypeEnum {
   switch (patreonType) {
     case "video":
     case "video_embed":
@@ -179,7 +179,7 @@ function mapPostType(patreonType: string | undefined): PostTypeEnum {
 
 // ─── JWT Expiry Parsing ───────────────────────────────
 
-function parseJwtExpiry(token: string): Date | null {
+export function parseJwtExpiry(token: string): Date | null {
   try {
     const parts = token.split(".");
     if (parts.length < 2) return null;
@@ -193,7 +193,7 @@ function parseJwtExpiry(token: string): Date | null {
   }
 }
 
-function getVideoExpiry(url: string): Date {
+export function getVideoExpiry(url: string): Date {
   try {
     const parsed = new URL(url);
     const token = parsed.searchParams.get("token");
@@ -208,11 +208,11 @@ function getVideoExpiry(url: string): Date {
 // ─── Video URL Extraction (HLS + MP4) ─────────────────
 
 // Signed Mux HLS URL: stream.mux.com/{ID}.m3u8?token=eyJ...
-const MUX_HLS_RE = /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\.m3u8\?token=[^"'\s<>]+/i;
+export const MUX_HLS_RE = /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\.m3u8\?token=[^"'\s<>]+/i;
 // Signed Mux MP4 URL: stream.mux.com/{ID}/{quality}.mp4?token=eyJ...
-const MUX_MP4_RE = /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\/[^"'\s<>]*\.mp4\?token=[^"'\s<>]+/i;
+export const MUX_MP4_RE = /https?:\/\/stream\.mux\.com\/[a-zA-Z0-9_-]+\/[^"'\s<>]*\.mp4\?token=[^"'\s<>]+/i;
 
-function extractVideoFromEmbed(embedHtml: string | null): ExtractedVideo | null {
+export function extractVideoFromEmbed(embedHtml: string | null): ExtractedVideo | null {
   if (!embedHtml) return null;
 
   // Try signed HLS URL
@@ -230,7 +230,7 @@ function extractVideoFromEmbed(embedHtml: string | null): ExtractedVideo | null 
   return null;
 }
 
-function extractVideoFromIncluded(included: PatreonIncluded[]): ExtractedVideo | null {
+export function extractVideoFromIncluded(included: PatreonIncluded[]): ExtractedVideo | null {
   for (const item of included) {
     const attrs = item.attributes as Record<string, unknown>;
 

@@ -34,6 +34,7 @@ export async function GET(request: Request) {
       skip,
       take: limit,
       include: {
+        creatorAccount: { select: { id: true, name: true } },
         media: {
           select: {
             id: true,

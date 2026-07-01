@@ -36,6 +36,7 @@ npm install
 # 2. Configure environment
 cp .env.example .env
 # Edit .env with your DATABASE_URL and CRON_SECRET
+# Optional: PATREON_CAMPAIGN_ID, HLS_REFRESH_INTERVAL_MINUTES
 
 # 3. Set up database
 npx prisma migrate dev --name init
