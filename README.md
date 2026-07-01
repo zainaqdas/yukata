@@ -1,17 +1,18 @@
 # 🎬 PatronHub
 
-A private, members-only content platform for your Patreon community. Automatically syncs your Patreon posts and serves video via Mux HLS streams — no more laggy Patreon UI.
+A content platform that syncs your Patreon posts (including HLS video) for sharing via a private link.
+Designed to share with your premium Discord community — no login, no invite codes.
 
 ## Features
 
-- **🔐 Magic-link authentication** — invite-code gated sign-in for your paying members
-- **🔄 Automatic Patreon sync** — posts auto-import using `session_id` cookie auth against Patreon's internal API
-- **🎥 HLS video player** — Mux HLS streams served through a custom video.js player (no Patreon UI)
+- **🔄 Multi-account Patreon sync** — auto-imports posts from your own and followed creators via `session_id` cookie
+- **🎥 HLS + MP4 video player** — Mux streams through video.js with JWT token-based expiry tracking
 - **🖼️ Media gallery** — browse all images and videos in a responsive grid
 - **🔍 Full-text search** — search across all posts with type filters
-- **🛡️ Admin dashboard** — manage invite codes, Patreon session, and manual sync controls
+- **🛡️ Admin dashboard** — manage multiple creator accounts, per-account sync, discover followed creators
+- **🏷️ Creator filter** — filter the home feed by creator name
 - **⏱️ Vercel cron jobs** — auto-sync every 15 min, HLS refresh every hour
-- **🌙 Dark theme** — zinc-950 + violet accents, responsive layout
+- **🔑 No auth** — share the link only in trusted channels (private Discord). Anyone with the URL can access.
 
 ## Tech Stack
 
@@ -20,10 +21,9 @@ A private, members-only content platform for your Patreon community. Automatical
 | Framework | Next.js 16 (App Router) |
 | Language | TypeScript |
 | Database | PostgreSQL + Prisma ORM |
-| Auth | Auth.js v5 (Nodemailer magic links) |
-| Video | video.js + hls.js (Mux HLS) |
+| Video | video.js + hls.js (Mux HLS/MP4) |
 | Styling | Tailwind CSS 4 |
-| Hosting | Vercel |
+| Hosting | Vercel (with cron jobs) |
 
 ## Quick Start
 
@@ -35,7 +35,7 @@ npm install
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env with your real values (see SETUP.md)
+# Edit .env with your DATABASE_URL and CRON_SECRET
 
 # 3. Set up database
 npx prisma migrate dev --name init
@@ -49,11 +49,9 @@ npm run dev
 See **[SETUP.md](./SETUP.md)** for the complete step-by-step deployment walkthrough, including:
 
 - PostgreSQL setup (Neon, Supabase, Railway)
-- Email provider configuration (Resend, SendGrid, Brevo)
 - Patreon `session_id` cookie extraction
 - Vercel deployment + cron jobs
-- First invite code seeding
-- Admin promotion
+- Multi-account setup (owned + followed creators)
 - Troubleshooting common issues
 
 ## Project Structure
@@ -61,40 +59,37 @@ See **[SETUP.md](./SETUP.md)** for the complete step-by-step deployment walkthro
 ```
 patron-hub/
 ├── prisma/
-│   └── schema.prisma          # 8 models: User, InviteCode, Post, Media, SyncState, etc.
+│   └── schema.prisma          # 4 models: CreatorAccount, Post, Media, SyncState
 ├── src/
 │   ├── app/
-│   │   ├── (auth)/             # Protected routes
-│   │   │   ├── posts/          # Post feed + detail pages
+│   │   ├── (main)/             # Routes (posts, gallery, search, admin)
+│   │   │   ├── posts/          # Home feed + detail pages + creator filter
 │   │   │   ├── gallery/        # Media gallery
 │   │   │   ├── search/         # Full-text search
-│   │   │   └── admin/          # Dashboard, sync, invite management
+│   │   │   └── admin/          # Multi-account dashboard, sync, discover
 │   │   ├── api/                # REST API routes
-│   │   │   ├── auth/           # Auth.js handlers
-│   │   │   ├── posts/          # Post CRUD
-│   │   │   ├── sync/           # Manual Patreon sync
-│   │   │   ├── session/        # Patreon session_id management
-│   │   │   ├── invites/        # Invite code CRUD + validation
+│   │   │   ├── accounts/       # Creator account CRUD + discover followed
+│   │   │   ├── posts/          # Post list + detail
+│   │   │   ├── sync/           # Manual Patreon sync (single + all)
+│   │   │   ├── session/        # Per-account session_id management
 │   │   │   ├── hls/            # HLS URL submission
 │   │   │   └── cron/           # Vercel cron endpoints
-│   │   └── login/              # Login page
+│   │   ├── layout.tsx          # Root layout with Navbar
+│   │   └── page.tsx            # Landing page → redirects to /posts
 │   ├── components/             # React components
-│   │   ├── Navbar.tsx          # Navigation bar
-│   │   ├── VideoPlayer.tsx     # HLS video.js player
-│   │   ├── PostCard.tsx        # Post preview card
+│   │   ├── Navbar.tsx          # Navigation bar (Posts, Gallery, Search, Admin)
+│   │   ├── VideoPlayer.tsx     # HLS + MP4 video.js player
+│   │   ├── PostCard.tsx        # Post preview card with creator name
 │   │   ├── PostGrid.tsx        # Post grid layout
+│   │   ├── CreatorFilter.tsx   # Creator filter dropdown for /posts
 │   │   ├── MediaGallery.tsx    # Media grid
 │   │   ├── SearchBar.tsx       # Search input
-│   │   ├── LoginForm.tsx       # Email + invite code form
-│   │   ├── InviteManager.tsx   # Admin invite code UI
 │   │   └── Providers.tsx       # React Query provider
 │   ├── lib/                    # Core business logic
-│   │   ├── auth.ts             # Auth.js config + type augmentation
 │   │   ├── prisma.ts           # Prisma singleton
-│   │   ├── patreon.ts          # Cookie-based Patreon sync engine
-│   │   ├── hls.ts              # HLS URL management
-│   │   └── invites.ts          # Invite code logic
-│   └── middleware.ts           # Route protection
+│   │   ├── patreon.ts          # Multi-account cookie-based sync engine
+│   │   └── hls.ts              # HLS/MP4 URL management + expiry
+│   └── globals.css
 ├── .env.example                # Environment template
 ├── vercel.json                 # Vercel config + cron jobs
 ├── SETUP.md                    # Deployment guide
@@ -103,18 +98,17 @@ patron-hub/
 
 ## API Routes
 
-| Endpoint | Auth | Purpose |
-|---|---|---|
-| `GET/POST /api/auth/*` | Public | Magic-link authentication |
-| `GET /api/posts` | Member | Paginated post list with filters |
-| `GET /api/posts/[id]` | Member | Post detail + active HLS URL |
-| `GET /api/invites/validate` | Public | Validate & claim invite codes |
-| `GET/POST/DELETE /api/invites` | Admin | CRUD invite codes |
-| `POST /api/hls` | Admin | Submit/refresh HLS manifest URL |
-| `GET/POST /api/sync` | Admin | Manual Patreon sync |
-| `GET/POST /api/session` | Admin | Manage Patreon `session_id` |
-| `GET /api/cron/sync-patreon` | CRON_SECRET | Automated Patreon sync |
-| `GET /api/cron/refresh-hls` | CRON_SECRET | HLS expiry check |
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/posts` | Paginated post list with type, search, creator filters |
+| `GET /api/posts/[id]` | Post detail + active video URL |
+| `POST /api/hls` | Submit/refresh video URL |
+| `GET/POST /api/sync` | Manual sync (single account or all) |
+| `GET/POST/DELETE /api/session` | Per-account `session_id` management |
+| `GET/POST/DELETE /api/accounts` | Creator account CRUD |
+| `POST /api/accounts/discover` | Discover followed Patreon campaigns |
+| `GET /api/cron/sync-patreon` | Automated sync (CRON_SECRET) |
+| `GET /api/cron/refresh-hls` | HLS expiry check (CRON_SECRET) |
 
 ## License
 

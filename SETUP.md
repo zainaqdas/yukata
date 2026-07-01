@@ -148,7 +148,7 @@ patron-hub/
 │   └── schema.prisma          # Database models (CreatorAccount, Post, Media, SyncState)
 ├── src/
 │   ├── app/
-│   │   ├── (auth)/             # Routes (posts, gallery, search, admin)
+│   │   ├── (main)/             # Routes (posts, gallery, search, admin)
 │   │   │   ├── admin/          # Admin dashboard (multi-account mgmt)
 │   │   │   └── posts/          # Home feed with creator filter dropdown
 │   │   ├── api/

@@ -77,7 +77,7 @@ A content platform that syncs Patreon posts (including video) for sharing via a 
 | `src/components/CreatorFilter.tsx` | Client dropdown to filter /posts feed by creator |
 | `src/components/VideoPlayer.tsx` | video.js player (HLS + MP4) |
 | `prisma/schema.prisma` | 4 models: CreatorAccount, Post, Media, SyncState |
-| `src/app/(auth)/admin/` | Admin dashboard: owned/followed badges, per-account session/sync, discover, add/delete |
+| `src/app/(main)/admin/` | Admin dashboard: owned/followed badges, per-account session/sync, discover, add/delete |
 | `src/app/layout.tsx` | Root layout with Navbar (no Providers/SessionProvider) |
 
 ---
@@ -118,7 +118,7 @@ PATREON_CF_BM_COOKIE  # (optional) Cloudflare bypass
 - [x] Admin dashboard: account CRUD, session, sync, discover, delete
 - [x] Frontend: posts feed with creator names + filter dropdown, gallery, search, video player
 - [x] All API routes + Vercel cron
-- [x] SETUP.md, .env.example, vercel.json
+- [x] SETUP.md, README.md, .env.example, vercel.json
 - [x] 7/7 real Patreon posts verified — HLS extraction from display field
 - [x] Typechecks clean, builds clean
 - [x] **Auth removed** — no login, no invite codes, public link access
@@ -127,19 +127,20 @@ PATREON_CF_BM_COOKIE  # (optional) Cloudflare bypass
 
 ## Git History (latest first)
 
-1. `docs: update SETUP.md for multi-account sync`
-2. `docs: update context.md with creator filter feature`
-3. `feat: add creator filter dropdown to /posts feed`
-4. `feat: add home feed with creator names on post cards`
-5. `feat: add followed creator discovery and sync`
-6. `refactor: extract Mux HLS/MP4 regexes`
-7. `fix: extract HLS URLs from media display field`
-8. `fix: support both MP4 and HLS video formats`
-9. `feat: multi-creator-account support`
-10. `feat: cookie-based Patreon sync`
-11. `Initial commit`
+1. `refactor: remove invite-based auth system, make site publicly accessible`
+2. `docs: update SETUP.md for multi-account sync`
+3. `docs: update context.md with creator filter feature`
+4. `feat: add creator filter dropdown to /posts feed`
+5. `feat: add home feed with creator names on post cards`
+6. `feat: add followed creator discovery and sync`
+7. `refactor: extract Mux HLS/MP4 regexes`
+8. `fix: extract HLS URLs from media display field`
+9. `fix: support both MP4 and HLS video formats`
+10. `feat: multi-creator-account support`
+11. `feat: cookie-based Patreon sync`
+12. `Initial commit`
 
 ---
 
 **Last updated:** July 1, 2026
-**Session ended with:** Auth system removed — no login, invite codes, or user accounts. Site is accessible to anyone with the link. All API auth checks stripped. Simplified to 4 Prisma models. SETUP.md rewrited for public link access.
+**Session ended with:** Auth system removed — no login, invite codes, or user accounts. Site is accessible to anyone with the link. All API auth checks stripped. Simplified to 4 Prisma models. Route group renamed from `(auth)` to `(main)`. README.md and all docs updated. 13 commits total.
