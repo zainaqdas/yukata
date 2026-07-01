@@ -101,7 +101,7 @@ DATABASE_URL="postgresql://user:pass@host/db?sslmode=require" \
   npx prisma migrate deploy
 ```
 
-This creates all the tables (User, InviteCode, Post, Media, SyncState, etc.).
+This creates all the tables (User, InviteCode, CreatorAccount, Post, Media, SyncState, etc.).
 
 ---
 
@@ -135,15 +135,32 @@ UPDATE "User" SET role = 'ADMIN' WHERE email = 'your@email.com';
 
 ## Step 8: Connect Patreon Sync
 
+The admin dashboard supports **multiple creator accounts** — both your own and followed creators whose posts you have access to.
+
+### 8a. Add Your Own Account
+
 1. Go to `/admin`
-2. Paste your `session_id` cookie (from Step 3) into the **Patreon Session** field
-3. Click **Save**
-4. Click **Sync Now**
-5. The sync engine will:
-   - Fetch all your Patreon posts
+2. Under **Add Owned Account**, enter your creator name (e.g. `MyChannel`)
+3. Click **Add** → your account appears in the list with an **Owned** badge
+4. Paste your `session_id` cookie (from Step 3) into the account's **Patreon Session** field
+5. Click **Save**
+6. Click the **Sync** button next to your account
+7. The sync engine will:
+   - Fetch all your Patreon posts (including paid/exclusive if you have membership access)
    - Extract thumbnails, embeds, and content
-   - Auto-detect Mux HLS video URLs from video posts
+   - Auto-detect Mux HLS video URLs from video posts (via the `display` field)
    - Store everything in your database
+
+### 8b. Discover Followed Creators
+
+If you're subscribed to other creators on Patreon, you can also import their posts:
+
+1. Make sure your owned account has a valid `session_id` saved
+2. Click the **Discover Followed** button next to your owned account
+3. Followed creator accounts appear with a **Followed** badge (they use your session)
+4. Click **Sync** on each followed account to pull in their posts
+
+> 💡 Followed accounts share the parent account's `session_id` — you only need one active session to sync all your followed creators.
 
 ✅ Your content is now live on your private site.
 
@@ -166,12 +183,14 @@ From the admin dashboard (`/admin`):
 
 The Vercel cron jobs (set in `vercel.json`) handle this automatically:
 
-- **Every 15 min** → Syncs new posts from Patreon
+- **Every 15 min** → Syncs new posts from all accounts (owned + followed)
 - **Every hour** → Checks for expiring HLS video URLs
 
-You can also trigger a manual sync anytime from `/admin` → **Sync Now**.
+You can also trigger a manual sync anytime from `/admin`:
+- **Sync All** button (top of page) → syncs every account
+- **Sync** button per account → syncs just that one
 
-Mux HLS URLs expire after ~24 hours. The cron job alerts you when URLs are approaching expiry. When that happens, re-sync or paste a fresh `session_id` and the HLS URLs will refresh.
+Mux HLS URLs expire based on their JWT tokens (typically ~24 hours). The `hlsExpiresAt` field on each media record tracks this. When tokens expire, re-sync and the HLS URLs will refresh with new tokens.
 
 ---
 
@@ -180,11 +199,11 @@ Mux HLS URLs expire after ~24 hours. The cron job alerts you when URLs are appro
 | Problem | Fix |
 |---|---|
 | "Magic link email not arriving" | Check spam folder. Verify `EMAIL_SERVER` in Vercel env vars. Test with Resend's dashboard. |
-| "Sync fails / session expired" | Your `session_id` cookie expired. Log into Patreon again, copy the new cookie, paste in `/admin`. |
+| "Sync fails / session expired" | Your `session_id` cookie expired. Log into Patreon again, copy the new cookie, find the affected account in `/admin`, paste the new cookie in its **Session** field. Followed accounts share the parent account's session — update the parent. |
 | "Cloudflare CAPTCHA" | Add `__cf_bm` cookie in `/admin` or set `PATREON_CF_BM_COOKIE` env var. |
 | "Build fails" | Check Vercel build logs. Make sure `DATABASE_URL` is set and `prisma generate` succeeds. |
 | "Database migration fails" | Make sure your IP is allowed in the database provider's firewall settings (Neon/Supabase default to allow all). |
-| "Videos not playing" | The Mux HLS URL may have expired. Go to `/admin` → **Sync Now** to refresh. |
+| "Videos not playing" | The Mux HLS URL may have expired. Go to `/admin` → click **Sync** on the relevant account to refresh. |
 
 ---
 
@@ -193,15 +212,21 @@ Mux HLS URLs expire after ~24 hours. The cron job alerts you when URLs are appro
 ```
 patron-hub/
 ├── prisma/
-│   └── schema.prisma          # Database models (User, Post, Media, SyncState, etc.)
+│   └── schema.prisma          # Database models (CreatorAccount, Post, Media, SyncState, User, InviteCode, etc.)
 ├── src/
 │   ├── app/
 │   │   ├── (auth)/             # Protected routes (posts, gallery, search, admin)
-│   │   ├── api/                # API routes (auth, posts, sync, invites, hls, session, cron)
+│   │   │   ├── admin/          # Admin dashboard (multi-account mgmt, discover, invite codes)
+│   │   │   └── posts/          # Home feed with creator filter dropdown
+│   │   ├── api/
+│   │   │   ├── accounts/       # Creator account CRUD + discover followed
+│   │   │   ├── session/        # Per-account session_id management
+│   │   │   ├── sync/           # Manual sync (single + all accounts)
+│   │   │   └── cron/           # Vercel cron jobs (sync-patreon, refresh-hls)
 │   │   ├── login/              # Login page
 │   │   ├── layout.tsx          # Root layout
 │   │   └── page.tsx            # Landing page
-│   ├── components/             # React components (Navbar, VideoPlayer, PostCard, etc.)
+│   ├── components/             # React components (Navbar, VideoPlayer, PostCard, CreatorFilter, etc.)
 │   ├── lib/                    # Core logic (auth.ts, prisma.ts, patreon.ts, hls.ts, invites.ts)
 │   └── middleware.ts           # Auth.js middleware (protects routes)
 ├── .env.example                # Environment variables template
@@ -229,6 +254,6 @@ patron-hub/
 | Database | PostgreSQL + Prisma ORM |
 | Auth | Auth.js v5 (magic links) |
 | Email | Nodemailer + SMTP |
-| Video | video.js + hls.js + Mux HLS |
+| Video | video.js + hls.js + Mux HLS/MP4 |
 | Styling | Tailwind CSS 4 |
 | Hosting | Vercel (with cron jobs) |
