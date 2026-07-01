@@ -70,11 +70,30 @@ export async function deleteAccount(accountId: string) {
   return prisma.creatorAccount.delete({ where: { id: accountId } });
 }
 
+// ─── Resolve auth account (walk up to owned parent) ──
+
+async function resolveAuthAccount(accountId: string) {
+  const account = await prisma.creatorAccount.findUnique({ where: { id: accountId } });
+  if (!account) throw new Error(`Account not found: ${accountId}`);
+  // If this is a followed account, use the parent's session
+  if (!account.isOwned && account.parentAccountId) {
+    const parent = await prisma.creatorAccount.findUnique({ where: { id: account.parentAccountId } });
+    if (!parent?.patreonSessionId) {
+      throw new Error(`Parent account "${parent?.name}" has no session_id configured.`);
+    }
+    return parent;
+  }
+  if (!account.patreonSessionId) {
+    throw new Error(`No session_id configured for "${account.name}". Add it in the admin dashboard.`);
+  }
+  return account;
+}
+
 // ─── Cookie Auth ──────────────────────────────────────
 
 async function getSessionCookie(accountId: string): Promise<string | null> {
-  const account = await prisma.creatorAccount.findUnique({ where: { id: accountId } });
-  return account?.patreonSessionId || null;
+  const auth = await resolveAuthAccount(accountId);
+  return auth.patreonSessionId || null;
 }
 
 function buildCookieHeader(sessionId: string): string {
@@ -276,12 +295,16 @@ async function findCampaignId(accountId: string): Promise<string> {
   const account = await prisma.creatorAccount.findUnique({ where: { id: accountId } });
   if (account?.patreonCampaignId) return account.patreonCampaignId;
 
+  // Only try API discovery for owned accounts
+  if (!account?.isOwned) {
+    throw new Error(`No campaign ID set for followed account "${account?.name}".`);
+  }
+
   const envCampaignId = process.env.PATREON_CAMPAIGN_ID;
   if (envCampaignId) return envCampaignId;
 
   try {
-    const data = await patreonCookieFetch(
-      accountId,
+    const data = await patreonCookieFetch(accountId,
       "/api/current_user/campaigns?include=null&fields[campaign]=id,creation_name"
     );
     if (data.data?.[0]) return data.data[0].id;
@@ -290,7 +313,56 @@ async function findCampaignId(accountId: string): Promise<string> {
   throw new Error("Could not determine campaign ID. Set a campaign_id on the account or PATREON_CAMPAIGN_ID in .env.");
 }
 
-// ─── Store video media ────────────────────────────────
+// ─── Discover followed campaigns ──────────────────────
+
+export async function discoverFollowedCampaigns(parentAccountId: string): Promise<{
+  discovered: number;
+  campaigns: Array<{ id: string; name: string }>;
+}> {
+  const parent = await prisma.creatorAccount.findUnique({ where: { id: parentAccountId } });
+  if (!parent?.isOwned) throw new Error("Only owned accounts can discover followed creators.");
+
+  const data = await patreonCookieFetch(
+    parentAccountId,
+    "/api/campaigns?filter[is_following]=true&include=null&fields[campaign]=creation_name,avatar_photo_url"
+  );
+
+  const campaigns = (data.data || []) as Array<{ id: string; attributes?: { creation_name?: string } }>;
+  let discovered = 0;
+  const result: Array<{ id: string; name: string }> = [];
+
+  for (const c of campaigns) {
+    // Skip if it's the parent's own campaign (try stored ID or env fallback)
+    const parentCampaignId = parent.patreonCampaignId || process.env.PATREON_CAMPAIGN_ID;
+    if (parentCampaignId && c.id === parentCampaignId) continue;
+
+    const name = c.attributes?.creation_name || `Creator ${c.id.slice(0, 8)}`;
+
+    // Check if already exists
+    const existing = await prisma.creatorAccount.findFirst({
+      where: { patreonCampaignId: c.id },
+    });
+    if (existing) {
+      result.push({ id: existing.id, name: existing.name });
+      continue;
+    }
+
+    // Create followed account
+    const created = await prisma.creatorAccount.create({
+      data: {
+        name,
+        patreonCampaignId: c.id,
+        isOwned: false,
+        parentAccountId,
+        status: "idle",
+      },
+    });
+    discovered++;
+    result.push({ id: created.id, name: created.name });
+  }
+
+  return { discovered, campaigns: result };
+}
 
 async function storeVideoMedia(
   postId: string,
@@ -445,10 +517,17 @@ export async function syncAccountPosts(accountId: string): Promise<{
 }
 
 export async function syncAllAccounts(): Promise<Awaited<ReturnType<typeof syncAccountPosts>>[]> {
-  const accounts = await prisma.creatorAccount.findMany({ where: { patreonSessionId: { not: null } } });
+  // Get owned accounts with session_id + all followed accounts (which use their parent's session)
+  const owned = await prisma.creatorAccount.findMany({
+    where: { isOwned: true, patreonSessionId: { not: null } },
+  });
+  const followed = await prisma.creatorAccount.findMany({
+    where: { isOwned: false, patreonCampaignId: { not: null } },
+  });
+  const allAccounts = [...owned, ...followed];
   const results: Awaited<ReturnType<typeof syncAccountPosts>>[] = [];
 
-  for (const account of accounts) {
+  for (const account of allAccounts) {
     try {
       results.push(await syncAccountPosts(account.id));
     } catch (error: any) {

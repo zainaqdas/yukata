@@ -59,19 +59,23 @@ model InviteCode {
 }
 
 model CreatorAccount {
-  id               String    @id @default(uuid())
-  name             String
-  patreonSessionId String?
-  sessionExpiresAt DateTime?
+  id                String           @id @default(uuid())
+  name              String
+  patreonSessionId  String?
+  sessionExpiresAt  DateTime?
   patreonCampaignId String?
-  lastSyncAt       DateTime?
-  cursor           String?
-  status           String    @default("idle")
-  errorLog         String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  lastSyncAt        DateTime?
+  cursor            String?
+  status            String           @default("idle")
+  errorLog          String?
+  isOwned           Boolean          @default(true)
+  parentAccountId   String?
+  parentAccount     CreatorAccount?  @relation("FollowedAccounts", fields: [parentAccountId], references: [id], onDelete: Cascade)
+  followedAccounts  CreatorAccount[] @relation("FollowedAccounts")
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
-  posts            Post[]
+  posts             Post[]
 }
 
 model Post {
